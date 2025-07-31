@@ -32,8 +32,10 @@ import org.wso2.carbon.context.CarbonContext;
 import org.wso2.carbon.context.PrivilegedCarbonContext;
 import org.wso2.carbon.identity.application.authenticator.fido2.core.WebAuthnService;
 import org.wso2.carbon.identity.application.authenticator.fido2.exception.FIDO2AuthenticatorClientException;
+import org.wso2.carbon.identity.application.authenticator.fido2.util.Either;
 import org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2ExecutorConstants;
 import org.wso2.carbon.identity.application.authenticator.fido2.util.FIDOUtil;
+import org.wso2.carbon.identity.application.authenticator.fido2.dto.FIDO2CredentialRegistration;
 import org.wso2.carbon.identity.flow.execution.engine.model.ExecutorResponse;
 import org.wso2.carbon.identity.flow.execution.engine.model.FlowExecutionContext;
 import org.wso2.carbon.identity.flow.execution.engine.model.FlowUser;
@@ -51,6 +53,7 @@ import java.util.Map;
 
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyString;
+import static org.mockito.Matchers.eq;
 import static org.mockito.MockitoAnnotations.initMocks;
 import static org.powermock.api.mockito.PowerMockito.doThrow;
 import static org.powermock.api.mockito.PowerMockito.mock;
@@ -62,8 +65,13 @@ import static org.wso2.carbon.identity.application.authentication.framework.util
 import static org.wso2.carbon.identity.flow.execution.engine.Constants.ExecutorStatus.STATUS_CLIENT_INPUT_REQUIRED;
 import static org.wso2.carbon.identity.flow.execution.engine.Constants.ExecutorStatus.STATUS_COMPLETE;
 import static org.wso2.carbon.identity.flow.execution.engine.Constants.ExecutorStatus.STATUS_ERROR;
+import static org.wso2.carbon.identity.flow.mgt.Constants.FlowTypes.REGISTRATION;
 import static org.wso2.carbon.utils.multitenancy.MultitenantConstants.SUPER_TENANT_DOMAIN_NAME;
 import static org.wso2.carbon.utils.multitenancy.MultitenantConstants.SUPER_TENANT_ID;
+import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.DISPLAY_NAME_CLAIM_URL;
+import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.FIRST_NAME_CLAIM_URL;
+import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.LAST_NAME_CLAIM_URL;
+import org.wso2.carbon.identity.flow.execution.engine.Constants;
 
 @PrepareForTest({CarbonContext.class, PrivilegedCarbonContext.class, FIDO2Executor.class,
         WebAuthnService.class, FIDOUtil.class, UserCoreUtil.class, JsonParser.class})
@@ -153,6 +161,8 @@ public class FIDO2ExecutorTest {
         properties.put(FIDO2ExecutorConstants.ORIGIN, ORIGIN);
         when(flowExecutionContext.getProperties()).thenReturn(properties);
         when(flowExecutionContext.getProperty(FIDO2ExecutorConstants.REQUEST_ID_CONTEXT_KEY)).thenReturn(REQUEST_ID);
+        when(flowExecutionContext.getFlowType()).thenReturn(REGISTRATION.getType());
+        when(flowExecutionContext.getTenantDomain()).thenReturn(TENANT_DOMAIN);
 
         Map<String, String> inputData = new HashMap<>();
         String credential = "{\"id\":\"" + CREDENTIAL_ID + "\",\"type\":\"public-key\"}";
@@ -164,10 +174,43 @@ public class FIDO2ExecutorTest {
         credentialJson.addProperty(FIDO2ExecutorConstants.ID, CREDENTIAL_ID);
         when(JsonParser.parseString(credential)).thenReturn(credentialJson);
 
+        // Mock FIDOUtil.isRegistrationFlow to return true to ensure we go through the registration path.
+        when(FIDOUtil.isRegistrationFlow(flowExecutionContext)).thenReturn(true);
+
+        // Create real instances instead of mocking final classes.
+        com.yubico.webauthn.data.ByteArray userHandle = new com.yubico.webauthn.data.ByteArray(new byte[32]);
+        com.yubico.webauthn.data.UserIdentity userIdentity = com.yubico.webauthn.data.UserIdentity.builder()
+                .name("testUser")
+                .displayName("Test User")
+                .id(userHandle)
+                .build();
+
+        com.yubico.webauthn.data.ByteArray credentialIdBytes = new com.yubico.webauthn.data.ByteArray(CREDENTIAL_ID.getBytes());
+        com.yubico.webauthn.data.ByteArray publicKey = new com.yubico.webauthn.data.ByteArray(new byte[64]);
+
+        com.yubico.webauthn.RegisteredCredential registeredCredential = com.yubico.webauthn.RegisteredCredential.builder()
+                .credentialId(credentialIdBytes)
+                .userHandle(userHandle)
+                .publicKeyCose(publicKey)
+                .signatureCount(0L)
+                .build();
+
+        FIDO2CredentialRegistration mockRegistration = FIDO2CredentialRegistration.builder()
+                .signatureCount(0L)
+                .userIdentity(userIdentity)
+                .credentialNickname(java.util.Optional.empty())
+                .credential(registeredCredential)
+                .attestationMetadata(java.util.Optional.empty())
+                .displayName("Test Device")
+                .isUsernamelessSupported(false)
+                .build()
+                .withRegistrationTime(java.time.Instant.now());
+
+        when(webAuthnService.createFIDO2Credential(anyString(), anyString())).thenReturn(mockRegistration);
         ExecutorResponse response = fido2Executor.execute(flowExecutionContext);
 
         Assert.assertEquals(response.getResult(), STATUS_COMPLETE);
-        Assert.assertEquals(response.getContextProperties().get(FIDO2ExecutorConstants.CREDENTIAL_ID), CREDENTIAL_ID);
+        Assert.assertNotNull(response.getContextProperties().get(FIDO2ExecutorConstants.CREDENTIAL_REGISTRATION));
     }
 
     @Test
@@ -178,6 +221,8 @@ public class FIDO2ExecutorTest {
         properties.put(FIDO2ExecutorConstants.ORIGIN, ORIGIN);
         when(flowExecutionContext.getProperties()).thenReturn(properties);
         when(flowExecutionContext.getProperty(FIDO2ExecutorConstants.REQUEST_ID_CONTEXT_KEY)).thenReturn(REQUEST_ID);
+        when(flowExecutionContext.getFlowType()).thenReturn(REGISTRATION.getType());
+        when(flowExecutionContext.getTenantDomain()).thenReturn(TENANT_DOMAIN);
 
         Map<String, String> inputData = new HashMap<>();
         String credential = "{\"id\":\"" + CREDENTIAL_ID + "\",\"type\":\"public-key\"}";
@@ -189,9 +234,12 @@ public class FIDO2ExecutorTest {
         credentialJson.addProperty(FIDO2ExecutorConstants.ID, CREDENTIAL_ID);
         when(JsonParser.parseString(credential)).thenReturn(credentialJson);
 
+        // Mock FIDOUtil.isRegistrationFlow to return true to ensure we go through the registration path.
+        when(FIDOUtil.isRegistrationFlow(flowExecutionContext)).thenReturn(true);
+
         // Set up WebAuthnService to throw an exception
         doThrow(new FIDO2AuthenticatorClientException("Error processing credential", ""))
-                .when(webAuthnService).finishFIDO2Registration(anyString(), anyString());
+                .when(webAuthnService).createFIDO2Credential(anyString(), anyString());
 
         ExecutorResponse response = fido2Executor.execute(flowExecutionContext);
 
@@ -228,6 +276,270 @@ public class FIDO2ExecutorTest {
 
         Assert.assertEquals(response.getResult(), STATUS_ERROR);
         Assert.assertEquals(response.getErrorMessage(), "Error deregistering credential");
+    }
+
+    @Test
+    public void testExecuteWithBlankUsername() {
+
+        Map<String, String> inputData = new HashMap<>();
+        inputData.put(FIDO2ExecutorConstants.ORIGIN, ORIGIN);
+        when(flowExecutionContext.getUserInputData()).thenReturn(inputData);
+        when(flowUser.getUsername()).thenReturn("");
+
+        ExecutorResponse response = fido2Executor.execute(flowExecutionContext);
+
+        Assert.assertEquals(response.getResult(), STATUS_ERROR);
+        Assert.assertEquals(response.getErrorMessage(), "Username is required for WebAuthn registration.");
+    }
+
+    @Test
+    public void testExecuteWithNullUsername() {
+
+        Map<String, String> inputData = new HashMap<>();
+        inputData.put(FIDO2ExecutorConstants.ORIGIN, ORIGIN);
+        when(flowExecutionContext.getUserInputData()).thenReturn(inputData);
+        when(flowUser.getUsername()).thenReturn(null);
+
+        ExecutorResponse response = fido2Executor.execute(flowExecutionContext);
+
+        Assert.assertEquals(response.getResult(), STATUS_ERROR);
+        Assert.assertEquals(response.getErrorMessage(), "Username is required for WebAuthn registration.");
+    }
+
+    @Test
+    public void testInitiateFIDO2Success() throws Exception {
+        // Setup for initiation (no credential provided)
+        Map<String, Object> properties = new HashMap<>();
+        properties.put(FIDO2ExecutorConstants.ORIGIN, ORIGIN);
+        when(flowExecutionContext.getProperties()).thenReturn(properties);
+
+        Map<String, String> inputData = new HashMap<>();
+        inputData.put(FIDO2ExecutorConstants.ORIGIN, ORIGIN);
+        // No credential provided - this triggers initiation flow
+        when(flowExecutionContext.getUserInputData()).thenReturn(inputData);
+        when(flowUser.getUsername()).thenReturn(USERNAME);
+
+        // Mock getUserDisplayName claims
+        Map<String, String> claims = new HashMap<>();
+        claims.put(DISPLAY_NAME_CLAIM_URL, DISPLAY_NAME);
+        when(flowUser.getClaims()).thenReturn(claims);
+
+        // Mock successful initiation
+        org.wso2.carbon.identity.application.authenticator.fido2.dto.FIDO2RegistrationRequest mockRequest =
+            mock(org.wso2.carbon.identity.application.authenticator.fido2.dto.FIDO2RegistrationRequest.class);
+        when(mockRequest.getPublicKeyCredentialCreationOptions()).thenReturn("mockOptions");
+        when(mockRequest.getRequestId()).thenReturn("mockRequestId");
+
+        Either<String, org.wso2.carbon.identity.application.authenticator.fido2.dto.FIDO2RegistrationRequest> mockResult =
+            Either.right(mockRequest);
+        when(webAuthnService.initiateFIDO2Registration(anyString(), anyString(), anyString())).thenReturn(mockResult);
+
+        ExecutorResponse response = fido2Executor.execute(flowExecutionContext);
+
+        Assert.assertEquals(response.getResult(), Constants.ExecutorStatus.STATUS_WEBAUTHN);
+        Assert.assertNotNull(response.getAdditionalInfo());
+        Assert.assertTrue(response.getRequiredData().contains(FIDO2ExecutorConstants.CREDENTIAL));
+    }
+
+    @Test
+    public void testInitiateFIDO2WithErrorResult() throws Exception {
+        // Setup for initiation
+        Map<String, Object> properties = new HashMap<>();
+        properties.put(FIDO2ExecutorConstants.ORIGIN, ORIGIN);
+        when(flowExecutionContext.getProperties()).thenReturn(properties);
+
+        Map<String, String> inputData = new HashMap<>();
+        inputData.put(FIDO2ExecutorConstants.ORIGIN, ORIGIN);
+        when(flowExecutionContext.getUserInputData()).thenReturn(inputData);
+        when(flowUser.getUsername()).thenReturn(USERNAME);
+
+        // Mock getUserDisplayName claims
+        Map<String, String> claims = new HashMap<>();
+        claims.put(DISPLAY_NAME_CLAIM_URL, DISPLAY_NAME);
+        when(flowUser.getClaims()).thenReturn(claims);
+
+        // Mock error result from initiation
+        Either<String, org.wso2.carbon.identity.application.authenticator.fido2.dto.FIDO2RegistrationRequest> mockResult =
+            Either.left("Initiation failed");
+        when(webAuthnService.initiateFIDO2Registration(anyString(), anyString(), anyString())).thenReturn(mockResult);
+
+        ExecutorResponse response = fido2Executor.execute(flowExecutionContext);
+
+        // Should not set WEBAUTHN status if initiation returns error
+        Assert.assertNotEquals(response.getResult(), Constants.ExecutorStatus.STATUS_WEBAUTHN);
+    }
+
+    @Test
+    public void testInitiateFIDO2WithException() throws Exception {
+        // Setup for initiation
+        Map<String, Object> properties = new HashMap<>();
+        properties.put(FIDO2ExecutorConstants.ORIGIN, ORIGIN);
+        when(flowExecutionContext.getProperties()).thenReturn(properties);
+
+        Map<String, String> inputData = new HashMap<>();
+        inputData.put(FIDO2ExecutorConstants.ORIGIN, ORIGIN);
+        when(flowExecutionContext.getUserInputData()).thenReturn(inputData);
+        when(flowUser.getUsername()).thenReturn(USERNAME);
+
+        // Mock getUserDisplayName claims
+        Map<String, String> claims = new HashMap<>();
+        claims.put(DISPLAY_NAME_CLAIM_URL, DISPLAY_NAME);
+        when(flowUser.getClaims()).thenReturn(claims);
+
+        // Mock exception during initiation
+        doThrow(new FIDO2AuthenticatorClientException("Initiation failed", ""))
+                .when(webAuthnService).initiateFIDO2Registration(anyString(), anyString(), anyString());
+
+        ExecutorResponse response = fido2Executor.execute(flowExecutionContext);
+
+        Assert.assertEquals(response.getResult(), STATUS_ERROR);
+        Assert.assertEquals(response.getErrorMessage(), "Initiation failed");
+    }
+
+    @Test
+    public void testGetUserDisplayNameWithFirstLastName() throws Exception {
+        // Setup for initiation to trigger getUserDisplayName
+        Map<String, Object> properties = new HashMap<>();
+        properties.put(FIDO2ExecutorConstants.ORIGIN, ORIGIN);
+        when(flowExecutionContext.getProperties()).thenReturn(properties);
+
+        Map<String, String> inputData = new HashMap<>();
+        inputData.put(FIDO2ExecutorConstants.ORIGIN, ORIGIN);
+        when(flowExecutionContext.getUserInputData()).thenReturn(inputData);
+        when(flowUser.getUsername()).thenReturn(USERNAME);
+
+        // Mock claims without display name but with first and last name
+        Map<String, String> claims = new HashMap<>();
+        claims.put(FIRST_NAME_CLAIM_URL, FIRST_NAME);
+        claims.put(LAST_NAME_CLAIM_URL, LAST_NAME);
+        when(flowUser.getClaims()).thenReturn(claims);
+
+        // Mock successful initiation
+        org.wso2.carbon.identity.application.authenticator.fido2.dto.FIDO2RegistrationRequest mockRequest =
+            mock(org.wso2.carbon.identity.application.authenticator.fido2.dto.FIDO2RegistrationRequest.class);
+        when(mockRequest.getPublicKeyCredentialCreationOptions()).thenReturn("mockOptions");
+        when(mockRequest.getRequestId()).thenReturn("mockRequestId");
+
+        Either<String, org.wso2.carbon.identity.application.authenticator.fido2.dto.FIDO2RegistrationRequest> mockResult =
+            Either.right(mockRequest);
+        when(webAuthnService.initiateFIDO2Registration(eq(ORIGIN), eq(USERNAME), eq(FIRST_NAME + " " + LAST_NAME)))
+                .thenReturn(mockResult);
+
+        ExecutorResponse response = fido2Executor.execute(flowExecutionContext);
+
+        Assert.assertEquals(response.getResult(), Constants.ExecutorStatus.STATUS_WEBAUTHN);
+    }
+
+    @Test
+    public void testGetUserDisplayNameFallbackToUsername() throws Exception {
+        // Setup for initiation to trigger getUserDisplayName
+        Map<String, Object> properties = new HashMap<>();
+        properties.put(FIDO2ExecutorConstants.ORIGIN, ORIGIN);
+        when(flowExecutionContext.getProperties()).thenReturn(properties);
+
+        Map<String, String> inputData = new HashMap<>();
+        inputData.put(FIDO2ExecutorConstants.ORIGIN, ORIGIN);
+        when(flowExecutionContext.getUserInputData()).thenReturn(inputData);
+        when(flowUser.getUsername()).thenReturn(USERNAME);
+
+        // Mock empty claims - should fallback to username
+        Map<String, String> claims = new HashMap<>();
+        when(flowUser.getClaims()).thenReturn(claims);
+
+        // Mock successful initiation
+        org.wso2.carbon.identity.application.authenticator.fido2.dto.FIDO2RegistrationRequest mockRequest =
+            mock(org.wso2.carbon.identity.application.authenticator.fido2.dto.FIDO2RegistrationRequest.class);
+        when(mockRequest.getPublicKeyCredentialCreationOptions()).thenReturn("mockOptions");
+        when(mockRequest.getRequestId()).thenReturn("mockRequestId");
+
+        Either<String, org.wso2.carbon.identity.application.authenticator.fido2.dto.FIDO2RegistrationRequest> mockResult =
+            Either.right(mockRequest);
+        when(webAuthnService.initiateFIDO2Registration(eq(ORIGIN), eq(USERNAME), eq(USERNAME)))
+                .thenReturn(mockResult);
+
+        ExecutorResponse response = fido2Executor.execute(flowExecutionContext);
+
+        Assert.assertEquals(response.getResult(), Constants.ExecutorStatus.STATUS_WEBAUTHN);
+    }
+
+    @Test
+    public void testProcessFIDO2Authentication() throws Exception {
+        // Setup for authentication flow (not registration)
+        Map<String, Object> properties = new HashMap<>();
+        properties.put(FIDO2ExecutorConstants.REQUEST_ID_CONTEXT_KEY, REQUEST_ID);
+        properties.put(FIDO2ExecutorConstants.ORIGIN, ORIGIN);
+        when(flowExecutionContext.getProperties()).thenReturn(properties);
+        when(flowExecutionContext.getProperty(FIDO2ExecutorConstants.REQUEST_ID_CONTEXT_KEY)).thenReturn(REQUEST_ID);
+        when(flowExecutionContext.getFlowType()).thenReturn("AUTHENTICATION"); // Not registration
+        when(flowExecutionContext.getTenantDomain()).thenReturn(TENANT_DOMAIN);
+
+        Map<String, String> inputData = new HashMap<>();
+        String credential = "{\"id\":\"" + CREDENTIAL_ID + "\",\"type\":\"public-key\"}";
+        inputData.put(FIDO2ExecutorConstants.CREDENTIAL, credential);
+        when(flowExecutionContext.getUserInputData()).thenReturn(inputData);
+
+        mockStatic(JsonParser.class);
+        JsonObject credentialJson = new JsonObject();
+        credentialJson.addProperty(FIDO2ExecutorConstants.ID, CREDENTIAL_ID);
+        when(JsonParser.parseString(credential)).thenReturn(credentialJson);
+
+        // Mock FIDOUtil.isRegistrationFlow to return false for authentication
+        when(FIDOUtil.isRegistrationFlow(flowExecutionContext)).thenReturn(false);
+
+        ExecutorResponse response = fido2Executor.execute(flowExecutionContext);
+
+        Assert.assertEquals(response.getResult(), STATUS_COMPLETE);
+        // Should not have CREDENTIAL_REGISTRATION in context for authentication flow
+        Assert.assertNull(response.getContextProperties().get(FIDO2ExecutorConstants.CREDENTIAL_REGISTRATION));
+    }
+
+    @Test
+    public void testProcessFIDO2WithMissingRequestId() throws Exception {
+        // Setup with missing request ID
+        Map<String, Object> properties = new HashMap<>();
+        properties.put(FIDO2ExecutorConstants.ORIGIN, ORIGIN);
+        // Missing REQUEST_ID_CONTEXT_KEY
+        when(flowExecutionContext.getProperties()).thenReturn(properties);
+        when(flowExecutionContext.getProperty(FIDO2ExecutorConstants.REQUEST_ID_CONTEXT_KEY)).thenReturn(null);
+        when(flowExecutionContext.getTenantDomain()).thenReturn(TENANT_DOMAIN);
+
+        Map<String, String> inputData = new HashMap<>();
+        String credential = "{\"id\":\"" + CREDENTIAL_ID + "\",\"type\":\"public-key\"}";
+        inputData.put(FIDO2ExecutorConstants.CREDENTIAL, credential);
+        when(flowExecutionContext.getUserInputData()).thenReturn(inputData);
+
+        ExecutorResponse response = fido2Executor.execute(flowExecutionContext);
+
+        // Should complete but not process the credential due to missing requestId
+        Assert.assertEquals(response.getResult(), STATUS_COMPLETE);
+    }
+
+    @Test
+    public void testRollbackWithoutCredentialId() throws Exception {
+        // Setup without credential ID
+        Map<String, Object> properties = new HashMap<>();
+        // Missing CREDENTIAL_ID
+        when(flowExecutionContext.getProperties()).thenReturn(properties);
+        when(flowUser.getUsername()).thenReturn(USERNAME);
+
+        ExecutorResponse response = fido2Executor.rollback(flowExecutionContext);
+
+        Assert.assertEquals(response.getResult(), STATUS_COMPLETE);
+        // Should not call deregister when credential ID is missing
+    }
+
+    @Test
+    public void testRollbackWithoutUsername() throws Exception {
+        // Setup without username
+        Map<String, Object> properties = new HashMap<>();
+        properties.put(FIDO2ExecutorConstants.CREDENTIAL_ID, CREDENTIAL_ID);
+        when(flowExecutionContext.getProperties()).thenReturn(properties);
+        when(flowUser.getUsername()).thenReturn(null);
+
+        ExecutorResponse response = fido2Executor.rollback(flowExecutionContext);
+
+        Assert.assertEquals(response.getResult(), STATUS_COMPLETE);
+        // Should not call deregister when username is missing
     }
 
     private void setWebAuthnServiceInExecutor() {
