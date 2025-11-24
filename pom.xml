@@ -25,7 +25,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.wso2.carbon.identity.local.auth.fido</groupId>
     <artifactId>identity-application-auth-fido</artifactId>
-    <version>5.4.28</version>
+    <version>5.4.28.1-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>WSO2 Carbon - FIDO Identity Application Authenticator</name>
     <description>
@@ -478,7 +478,7 @@
         <jacoco.version>0.8.2</jacoco.version>
     
         <jacoco.version>0.8.12</jacoco.version>
-    </properties>
+    <project.scm.id>wso2-scm-server</project.scm.id></properties>
 
     <modules>
         <module>components/org.wso2.carbon.identity.application.authenticator.fido</module>
