@@ -60,11 +60,13 @@ public class WebAuthnAuditLoggerTest {
 
     @ObjectFactory
     public IObjectFactory getObjectFactory() {
+
         return new PowerMockObjectFactory();
     }
 
     @BeforeMethod
     public void setUp() {
+
         System.setProperty("carbon.home", ".");
         initMocks(this);
         auditLogger = new WebAuthnAuditLogger();
@@ -99,12 +101,10 @@ public class WebAuthnAuditLoggerTest {
      */
     @Test
     public void testGetUserRegularUser() throws Exception {
-        // Act: Invoke the private method using reflection.
+
         Method getUserMethod = WebAuthnAuditLogger.class.getDeclaredMethod("getUser");
         getUserMethod.setAccessible(true);
         String result = (String) getUserMethod.invoke(auditLogger);
-
-        // Assert
         Assert.assertEquals(result, "testUser@carbon.super");
     }
 
@@ -113,12 +113,10 @@ public class WebAuthnAuditLoggerTest {
      */
     @Test
     public void testGetInitiatorIdWithValidUser() throws Exception {
-        // Act
+
         Method getInitiatorIdMethod = WebAuthnAuditLogger.class.getDeclaredMethod("getInitiatorId");
         getInitiatorIdMethod.setAccessible(true);
         String result = (String) getInitiatorIdMethod.invoke(auditLogger);
-
-        // Assert
         Assert.assertEquals(result, "initiator-id-test");
     }
 
@@ -127,18 +125,14 @@ public class WebAuthnAuditLoggerTest {
      */
     @Test
     public void testGetInitiatorIdWithBlankInitiator() throws Exception {
-        // Arrange
+
         when(IdentityUtil.getInitiatorId("testUser", "carbon.super"))
                 .thenReturn("");
         when(LoggerUtils.getMaskedContent("testUser@carbon.super"))
                 .thenReturn("masked-user");
-
-        // Act
         Method getInitiatorIdMethod = WebAuthnAuditLogger.class.getDeclaredMethod("getInitiatorId");
         getInitiatorIdMethod.setAccessible(true);
         String result = (String) getInitiatorIdMethod.invoke(auditLogger);
-
-        // Assert
         Assert.assertEquals(result, "masked-user");
     }
 
@@ -147,7 +141,7 @@ public class WebAuthnAuditLoggerTest {
      */
     @Test
     public void testGetInitiatorIdWithSystemUser() throws Exception {
-        // Arrange
+
         when(carbonContext.getUsername()).thenReturn(CarbonConstants.REGISTRY_SYSTEM_USERNAME);
         when(UserCoreUtil.addTenantDomainToEntry(
                 CarbonConstants.REGISTRY_SYSTEM_USERNAME, "carbon.super"))
@@ -158,13 +152,9 @@ public class WebAuthnAuditLoggerTest {
         when(IdentityUtil.getInitiatorId(
                 CarbonConstants.REGISTRY_SYSTEM_USERNAME, "carbon.super"))
                 .thenReturn("");
-
-        // Act
         Method getInitiatorIdMethod = WebAuthnAuditLogger.class.getDeclaredMethod("getInitiatorId");
         getInitiatorIdMethod.setAccessible(true);
         String result = (String) getInitiatorIdMethod.invoke(auditLogger);
-
-        // Assert
         Assert.assertEquals(result, LoggerUtils.Initiator.System.name());
     }
 
@@ -173,18 +163,16 @@ public class WebAuthnAuditLoggerTest {
      */
     @Test
     public void testCreateAuditLogEntryWithValidData() throws Exception {
-        // Arrange
+
         String username = "testUser@carbon.super";
         String credentialId = "credential-123";
         String initiator = "admin";
 
-        // Act
         Method createAuditLogEntryMethod = WebAuthnAuditLogger.class.getDeclaredMethod("createAuditLogEntry",
                 String.class, String.class, String.class);
         createAuditLogEntryMethod.setAccessible(true);
         JSONObject result = (JSONObject) createAuditLogEntryMethod.invoke(auditLogger, username, credentialId, initiator);
 
-        // Assert
         Assert.assertNotNull(result);
         Assert.assertEquals(result.getString("Username"), username);
         Assert.assertEquals(result.getString("CredentialId"), credentialId);
@@ -196,16 +184,13 @@ public class WebAuthnAuditLoggerTest {
      */
     @Test
     public void testPrintAuditLogWithValidData() {
-        // Arrange
+
         String username = "testUser@carbon.super";
         String credentialId = "credential-123";
         String initiator = "admin";
         WebAuthnAuditLogger.Operation operation = WebAuthnAuditLogger.Operation.DEREGISTER_PASSKEY;
 
-        // Act
         auditLogger.printAuditLog(operation, username, credentialId);
-
-        // Assert - Verify that triggerAuditLogEvent was called
         verifyStatic();
         LoggerUtils.triggerAuditLogEvent(any(AuditLog.AuditLogBuilder.class));
     }
@@ -215,7 +200,7 @@ public class WebAuthnAuditLoggerTest {
      */
     @Test
     public void testOperationEnum() {
-        // Act & Assert
+
         WebAuthnAuditLogger.Operation operation = WebAuthnAuditLogger.Operation.DEREGISTER_PASSKEY;
         Assert.assertEquals(operation.getLogAction(), "deregister-device");
     }
@@ -225,23 +210,19 @@ public class WebAuthnAuditLoggerTest {
      */
     @Test
     public void testBuildAuditLog() throws Exception {
-        // Arrange
+
         WebAuthnAuditLogger.Operation operation = WebAuthnAuditLogger.Operation.DEREGISTER_PASSKEY;
         JSONObject data = new JSONObject();
         data.put("Username", "testUser@carbon.super");
         data.put("CredentialId", "credential-123");
         data.put("Initiator", "admin");
 
-        // Act
         Method buildAuditLogMethod = WebAuthnAuditLogger.class.getDeclaredMethod("buildAuditLog",
                 WebAuthnAuditLogger.Operation.class, JSONObject.class);
         buildAuditLogMethod.setAccessible(true);
         buildAuditLogMethod.invoke(auditLogger, operation, data);
-
-        // Assert - Verify that triggerAuditLogEvent was called
         verifyStatic();
         LoggerUtils.triggerAuditLogEvent(any(AuditLog.AuditLogBuilder.class));
-
         verifyStatic();
         LoggerUtils.jsonObjectToMap(any(JSONObject.class));
     }
