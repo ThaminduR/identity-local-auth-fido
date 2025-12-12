@@ -18,7 +18,7 @@
         <groupId>org.wso2.carbon.identity.local.auth.fido</groupId>
         <artifactId>identity-application-auth-fido</artifactId>
         <relativePath>../../pom.xml</relativePath>
-        <version>5.4.28.1-SNAPSHOT</version>
+        <version>5.4.28.1</version>
     </parent>
 
     <artifactId>org.wso2.carbon.identity.application.authenticator.fido2.server.feature</artifactId>
@@ -176,9 +176,9 @@
                         <phase>install</phase>
                         <configuration>
                             <tasks>
-                                <delete dir="src/main/resources"/>
-                                <delete dir="src/main"/>
-                                <delete dir="src"/>
+                                <delete dir="src/main/resources" />
+                                <delete dir="src/main" />
+                                <delete dir="src" />
                             </tasks>
                         </configuration>
                         <goals>

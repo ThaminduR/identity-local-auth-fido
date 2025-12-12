@@ -19,7 +19,7 @@
     <parent>
         <groupId>org.wso2.carbon.identity.local.auth.fido</groupId>
         <artifactId>identity-application-auth-fido</artifactId>
-        <version>5.4.28.1-SNAPSHOT</version>
+        <version>5.4.28.1</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
@@ -46,10 +46,10 @@
                         <configuration>
                             <tasks>
                                 <java classname="org.apache.axis2.wsdl.WSDL2Java" fork="true">
-                                    <arg line="-uri src/main/resources/FIDOService.wsdl -u -uw -g -sn FIDOService -o target/generated-code -ns2p http://common.core.carbon.wso2.org/xsd=org.wso2.carbon.identity.authenticator.fido.stub.client,http://fido.authenticator.identity.carbon.wso2.org=org.wso2.carbon.identity.authenticator.fido.stub.client"/>
-                                    <classpath refid="maven.dependency.classpath"/>
-                                    <classpath refid="maven.compile.classpath"/>
-                                    <classpath refid="maven.runtime.classpath"/>
+                                    <arg line="-uri src/main/resources/FIDOService.wsdl -u -uw -g -sn FIDOService -o target/generated-code -ns2p http://common.core.carbon.wso2.org/xsd=org.wso2.carbon.identity.authenticator.fido.stub.client,http://fido.authenticator.identity.carbon.wso2.org=org.wso2.carbon.identity.authenticator.fido.stub.client" />
+                                    <classpath refid="maven.dependency.classpath" />
+                                    <classpath refid="maven.compile.classpath" />
+                                    <classpath refid="maven.runtime.classpath" />
                                 </java>
                             </tasks>
                         </configuration>
