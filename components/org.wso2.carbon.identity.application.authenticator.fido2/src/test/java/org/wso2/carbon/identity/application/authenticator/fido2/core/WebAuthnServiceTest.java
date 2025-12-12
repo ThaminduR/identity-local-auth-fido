@@ -90,6 +90,7 @@ import org.wso2.carbon.identity.core.util.IdentityUtil;
 import org.wso2.carbon.user.api.UserStoreException;
 import org.wso2.carbon.user.core.UserRealm;
 import org.wso2.carbon.user.core.UserStoreManager;
+import org.wso2.carbon.user.core.common.AbstractUserStoreManager;
 import org.wso2.carbon.user.core.service.RealmService;
 import org.wso2.carbon.user.core.util.UserCoreUtil;
 
@@ -139,7 +140,7 @@ import static org.wso2.carbon.utils.multitenancy.MultitenantConstants.SUPER_TENA
         RegistrationResult.class, RegisteredCredential.class, PublicKeyCredentialDescriptor.class, UserIdentity.class,
         AuthenticatorSelectionCriteria.class, RelyingPartyIdentity.class, WebAuthnService.class, WebAuthnManager.class,
         RegistrationData.class, AssertionRequest.class, FIDO2CredentialRegistration.class, FIDOUtil.class,
-        StartAssertionOptions.class, AssertionResult.class})
+        StartAssertionOptions.class, AssertionResult.class, AbstractUserStoreManager.class})
 public class WebAuthnServiceTest {
 
     private final String ORIGIN = "https://localhost:9443";
@@ -193,7 +194,7 @@ public class WebAuthnServiceTest {
     @Mock
     private UserRealm userRealm;
     @Mock
-    private UserStoreManager userStoreManager;
+    private AbstractUserStoreManager userStoreManager;
     @Mock
     private InternetDomainName internetDomainName;
     @Mock
@@ -273,6 +274,13 @@ public class WebAuthnServiceTest {
         when(IdentityTenantUtil.getTenantId(SUPER_TENANT_DOMAIN_NAME)).thenReturn(SUPER_TENANT_ID);
         mockStatic(FIDO2AuthenticatorServiceComponent.class);
         when(FIDO2AuthenticatorServiceComponent.getRealmService()).thenReturn(realmService);
+
+        mockStatic(FIDO2AuthenticatorServiceDataHolder.class);
+        when(FIDO2AuthenticatorServiceDataHolder.getInstance()).thenReturn(fido2AuthenticatorServiceDataHolder);
+        when(fido2AuthenticatorServiceDataHolder.getRealmService()).thenReturn(realmService);
+        when(fido2AuthenticatorServiceDataHolder.getConfigurationManager()).thenReturn(configurationManager);
+        userStoreManager = mock(AbstractUserStoreManager.class);
+
         when(realmService.getTenantUserRealm(anyInt())).thenReturn(userRealm);
         when(userRealm.getUserStoreManager()).thenReturn(userStoreManager);
         when(userStoreManager.getSecondaryUserStoreManager(anyString())).thenReturn(userStoreManager);
@@ -282,14 +290,11 @@ public class WebAuthnServiceTest {
                 .thenReturn(FIRST_NAME);
         when(userStoreManager.getUserClaimValue(TENANT_QUALIFIED_USERNAME, LAST_NAME_CLAIM_URL, null))
                 .thenReturn(LAST_NAME);
+        when(userStoreManager.getUserIDFromUserName(anyString())).thenReturn("user-id-123");
 
         mockStatic(InternetDomainName.class);
         when(InternetDomainName.from(anyString())).thenReturn(internetDomainName);
         when(internetDomainName.hasPublicSuffix()).thenReturn(false);
-
-        mockStatic(FIDO2AuthenticatorServiceDataHolder.class);
-        when(FIDO2AuthenticatorServiceDataHolder.getInstance()).thenReturn(fido2AuthenticatorServiceDataHolder);
-        when(fido2AuthenticatorServiceDataHolder.getConfigurationManager()).thenReturn(configurationManager);
 
         List<FIDO2CredentialRegistration> credentialRegistrations = new ArrayList<>();
         credentialRegistrations.add(fido2CredentialRegistration);
@@ -669,6 +674,8 @@ public class WebAuthnServiceTest {
         mockStatic(CarbonContext.class);
         CarbonContext carbonContext = mock(CarbonContext.class);
         when(CarbonContext.getThreadLocalCarbonContext()).thenReturn(carbonContext);
+        when(carbonContext.getUsername()).thenReturn(USERNAME);
+        when(carbonContext.getTenantDomain()).thenReturn(SUPER_TENANT_DOMAIN_NAME);
     }
 
     private static String readResource(String filename, Class cClass) throws IOException {
