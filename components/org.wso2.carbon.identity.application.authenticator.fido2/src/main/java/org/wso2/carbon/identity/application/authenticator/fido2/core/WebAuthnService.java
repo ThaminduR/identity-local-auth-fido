@@ -98,6 +98,7 @@ import org.wso2.carbon.identity.application.authenticator.fido2.internal.FIDO2Au
 import org.wso2.carbon.identity.application.authenticator.fido2.internal.FIDO2AuthenticatorServiceDataHolder;
 import org.wso2.carbon.identity.application.authenticator.fido2.internal.MetadataService;
 import org.wso2.carbon.identity.application.authenticator.fido2.util.Either;
+import org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants;
 import org.wso2.carbon.identity.application.authenticator.fido2.util.FIDOUtil;
 import org.wso2.carbon.identity.application.authenticator.fido2.util.WebAuthnAuditLogger;
 import org.wso2.carbon.identity.application.common.model.User;
@@ -128,7 +129,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.yubico.webauthn.data.UserVerificationRequirement.PREFERRED;
-import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.APPLICATION_NAME;
+import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.*;
 import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.ClientExceptionErrorCodes.ERROR_CODE_DELETE_REGISTRATION_CREDENTIAL_UNAVAILABLE;
 import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.ClientExceptionErrorCodes.ERROR_CODE_DELETE_REGISTRATION_INVALID_CREDENTIAL;
 import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.ClientExceptionErrorCodes.ERROR_CODE_FINISH_REGISTRATION_INVALID_ATTESTATION;
@@ -137,21 +138,6 @@ import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO
 import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.ClientExceptionErrorCodes.ERROR_CODE_START_REGISTRATION_INVALID_ORIGIN;
 import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.ClientExceptionErrorCodes.ERROR_CODE_UPDATE_REGISTRATION_CREDENTIAL_UNAVAILABLE;
 import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.ClientExceptionErrorCodes.ERROR_CODE_UPDATE_REGISTRATION_INVALID_CREDENTIAL;
-import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.DECODING_FAILED_MESSAGE;
-import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.DISPLAY_NAME_CLAIM_URL;
-import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.FIDO2_CONFIG_ATTESTATION_VALIDATION_ATTRIBUTE_NAME;
-import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.FIDO2_CONFIG_ATTESTATION_VALIDATION_DEFAULT_VALUE;
-import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.FIDO2_CONFIG_MDS_VALIDATION_ATTRIBUTE_NAME;
-import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.FIDO2_CONFIG_MDS_VALIDATION_DEFAULT_VALUE;
-import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.FIDO2_CONFIG_RESOURCE_NAME;
-import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.FIDO2_CONFIG_TRUSTED_ORIGIN_ATTRIBUTE_NAME;
-import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.FIDO2_CONNECTOR_CONFIG_RESOURCE_NAME;
-import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.FIDO2_USER;
-import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.FIDO_CONFIG_RESOURCE_TYPE_NAME;
-import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.FIRST_NAME_CLAIM_URL;
-import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.INVALID_ORIGIN_MESSAGE;
-import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.LAST_NAME_CLAIM_URL;
-import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.TRUSTED_ORIGINS;
 import static org.wso2.carbon.identity.configuration.mgt.core.constant.ConfigurationConstants.ErrorMessages.ERROR_CODE_ATTRIBUTE_DOES_NOT_EXISTS;
 import static org.wso2.carbon.identity.configuration.mgt.core.constant.ConfigurationConstants.ErrorMessages.ERROR_CODE_RESOURCE_DOES_NOT_EXISTS;
 
@@ -1060,8 +1046,13 @@ public class WebAuthnService {
 
         try {
             InternetDomainName internetDomainName = InternetDomainName.from(originUrl.getHost());
-            rpId = internetDomainName.hasPublicSuffix() ? internetDomainName.topPrivateDomain().toString()
-                    : originUrl.getHost();
+            if (Boolean.parseBoolean(IdentityUtil.getProperty(FIDO2AuthenticatorConstants
+                    .FIDO_RELYING_PARTY_ENFORCE_SUB_DOMAIN_RESTRICTION))){
+                rpId = internetDomainName.toString();
+            } else {
+                rpId = internetDomainName.hasPublicSuffix() ? internetDomainName.topPrivateDomain().toString()
+                        : originUrl.getHost();
+            }
         } catch (IllegalArgumentException e) {
             if (log.isDebugEnabled()) {
                 log.debug("Invalid domain name: '" + originUrl.getHost()
