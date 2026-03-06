@@ -100,6 +100,7 @@ import static org.wso2.carbon.identity.application.authenticator.fido.util.FIDOA
 import static org.wso2.carbon.identity.application.authenticator.fido.util.FIDOAuthenticatorConstants.FIDO_KEY_DISPLAY_NAME;
 import static org.wso2.carbon.identity.application.authenticator.fido.util.FIDOAuthenticatorConstants.FIDO_KEY_ID;
 import static org.wso2.carbon.identity.application.authenticator.fido.util.FIDOAuthenticatorConstants.IS_PASSKEY_CREATION_CONSENT_RECEIVED;
+import static org.wso2.carbon.identity.application.authenticator.fido.util.FIDOAuthenticatorConstants.IS_API_BASED_AND_NO_PASSKEY_ENROLLED;
 import static org.wso2.carbon.identity.application.authenticator.fido.util.FIDOAuthenticatorConstants.LogConstants.ActionIDs.PROCESS_AUTHENTICATION_RESPONSE;
 import static org.wso2.carbon.identity.application.authenticator.fido.util.FIDOAuthenticatorConstants.LogConstants.ActionIDs.VALIDATE_FIDO_REQUEST;
 import static org.wso2.carbon.identity.application.authenticator.fido.util.FIDOAuthenticatorConstants.LogConstants.FIDO_AUTH_SERVICE;
@@ -193,6 +194,11 @@ public class FIDOAuthenticator extends AbstractApplicationAuthenticator
                 initiateAuthenticationRequest(request, response, context);
                 return AuthenticatorFlowStatus.INCOMPLETE;
             } else {
+                if (isAPIBasedAuthRequest(request)) {
+                    // App-native doesn't support progressive passkey enrollment.
+                    // TODO: This need to be updated once the app-native supports progressive passkey enrollment.
+                    context.setProperty(IS_API_BASED_AND_NO_PASSKEY_ENROLLED, true);
+                }
                 if (enablePasskeyProgressiveEnrollment) {
                     // If the user hasn't enrolled passkeys and if the passkey enrollment consent hasn't
                     // received, then redirect the user to the consent page prior to initiating the passkey
@@ -720,6 +726,10 @@ public class FIDOAuthenticator extends AbstractApplicationAuthenticator
     @Override
     public Optional<AuthenticatorData> getAuthInitiationData(AuthenticationContext context) {
 
+        if (Boolean.TRUE.equals(context.getProperty(IS_API_BASED_AND_NO_PASSKEY_ENROLLED))) {
+            // If passkey creation consent is not received, the user has not been redirected to the consent page yet.
+            return Optional.empty();
+        }
         AuthenticatorData authenticatorData = new AuthenticatorData();
         authenticatorData.setName(getName());
         authenticatorData.setDisplayName(getFriendlyName());
