@@ -38,6 +38,8 @@ public class FIDOAuthenticatorConstants {
             "Error occurred while checking account lock status for user: %s";
     public static final String ACCOUNT_LOCKED_ERROR_QUERY_PARAMS =
             "&authFailure=true&authFailureMsg=error.user.account.locked";
+    public static final String NO_PASSKEY_ENROLLED_ERROR_QUERY_PARAMS =
+            "&authFailure=true&authFailureMsg=no.enrolled.passkey.found";
     public static final String ERROR_REDIRECTING_TO_ERROR_PAGE_MESSAGE =
             "Error occurred while redirecting to error page";
 
