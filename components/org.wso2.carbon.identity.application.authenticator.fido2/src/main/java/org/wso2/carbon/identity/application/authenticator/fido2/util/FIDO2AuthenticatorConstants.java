@@ -43,6 +43,7 @@ public class FIDO2AuthenticatorConstants {
 
     public static final String APPLICATION_NAME = "WSO2 Identity Server";
     public static final String FIDO2_DEVICE_STORE = "FIDO2_DEVICE_STORE";
+    public static final String FIDO2_APP_ID_SP_PROPERTY = "fido2AppId";
 
     public static final String INVALID_ORIGIN_MESSAGE = "FIDO2 device registration initialisation " +
             "failed due to invalid origin.";

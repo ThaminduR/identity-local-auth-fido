@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2025, WSO2 LLC. (http://www.wso2.com).
+ * Copyright (c) 2015-2026, WSO2 LLC. (http://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -524,11 +524,7 @@ public class FIDOAuthenticator extends AbstractApplicationAuthenticator
         }
         String tokenResponse = request.getParameter(TOKEN_RESPONSE);
 
-        if (isAPIBasedAuthRequest(request)) {
-            tokenResponse = base64URLDecode(request.getParameter(TOKEN_RESPONSE));
-        }
         if (tokenResponse != null && !tokenResponse.contains(ERROR_CODE)) {
-            String appID = FIDOUtil.getOrigin(request);
             if (isWebAuthnEnabled()) {
                 if (user == null) {
                     user = processFido2UsernamelessAuthenticationResponse(tokenResponse);
@@ -536,6 +532,7 @@ public class FIDOAuthenticator extends AbstractApplicationAuthenticator
                     processFido2AuthenticationResponse(user, tokenResponse);
                 }
             } else {
+                String appID = FIDOUtil.getOrigin(request);
                 processFidoAuthenticationResponse(user, appID, tokenResponse);
             }
             user.setAuthenticatedSubjectIdentifier(user.getUsernameAsSubjectIdentifier(true, true));
@@ -688,8 +685,9 @@ public class FIDOAuthenticator extends AbstractApplicationAuthenticator
         // Origin as appID eg: https://example.com:8080
         String appID = resolveAppId(request);
 
+        boolean isAPIBased = isAPIBasedAuthRequest(request);
         try {
-            String redirectUrl = getRedirectUrl(response, user, appID, getLoginPage(), context);
+            String redirectUrl = getRedirectUrl(user, appID, getLoginPage(), context, isAPIBased);
             response.sendRedirect(redirectUrl);
             if (LoggerUtils.isDiagnosticLogsEnabled()) {
                 DiagnosticLog.DiagnosticLogBuilder diagnosticLogBuilder = new DiagnosticLog.DiagnosticLogBuilder(
@@ -830,7 +828,7 @@ public class FIDOAuthenticator extends AbstractApplicationAuthenticator
     }
 
     private String initiateFido2AuthenticationRequest(AuthenticatedUser user, String appID, AuthenticationContext
-            context) throws AuthenticationFailedException {
+            context, boolean isAPIBased) throws AuthenticationFailedException {
 
         WebAuthnService webAuthnService = new WebAuthnService();
 
@@ -850,12 +848,49 @@ public class FIDOAuthenticator extends AbstractApplicationAuthenticator
             }
         }
 
+        // In API-based flows, resolve the rpId and effective appId from the AppID configured via adaptive script
+        // authenticator params. Browser-redirect flows are unaffected and rely solely on appID from resolveAppId().
+        String resolvedRpId = null;
+        String resolvedAppId = null;
+        String rpName = null;
+        if (isAPIBased) {
+            String spName = context.getServiceProviderName();
+            if (StringUtils.isNotBlank(spName)) {
+                rpName = spName;
+            }
+            // AppID set via adaptive script authenticator params.
+            Map<String, String> params = getRuntimeParams(context);
+            String scriptAppId = params.get(FIDOAuthenticatorConstants.SCRIPT_APP_ID);
+            if (StringUtils.isNotBlank(scriptAppId)) {
+                try {
+                    resolvedRpId = new URI(scriptAppId).getHost();
+                    resolvedAppId = scriptAppId;
+                } catch (URISyntaxException e) {
+                    if (log.isDebugEnabled()) {
+                        log.debug("Malformed AppID value '" + scriptAppId +
+                                "' set via adaptive script parameters.", e);
+                    }
+                    throw new AuthenticationFailedException("Malformed AppID value set via " +
+                            "adaptive script parameters: " + scriptAppId, e);
+                }
+            }
+        }
+
+        String effectiveAppId = resolvedAppId != null ? resolvedAppId : appID;
+
         //Initiate the usernameless authentication process when either the user is unidentified or the identified user
         // lacks an enrolled passkey.
         if (user == null || !hasUserSetPasskeys(user)) {
+            if (resolvedRpId != null) {
+                return webAuthnService.startUsernamelessAuthenticationWithRpId(resolvedRpId, rpName, effectiveAppId);
+            }
             return webAuthnService.startUsernamelessAuthentication(appID);
         }
 
+        if (resolvedRpId != null) {
+            return webAuthnService.startAuthenticationWithRpId(resolvedRpId, rpName, user.getUserName(),
+                    user.getTenantDomain(), user.getUserStoreDomain(), effectiveAppId);
+        }
         return webAuthnService.startAuthentication(user.getUserName(),
                 user.getTenantDomain(), user.getUserStoreDomain(), appID);
     }
@@ -933,13 +968,13 @@ public class FIDOAuthenticator extends AbstractApplicationAuthenticator
         return webAuthnEnabled;
     }
 
-    private String getRedirectUrl(HttpServletResponse response, AuthenticatedUser user, String appID, String loginPage,
-                                  AuthenticationContext context)
+    private String getRedirectUrl(AuthenticatedUser user, String appID, String loginPage,
+                                  AuthenticationContext context, boolean isAPIBased)
             throws AuthenticationFailedException, UnsupportedEncodingException, URLBuilderException,
             URISyntaxException {
 
         if (isWebAuthnEnabled()) {
-            String data = initiateFido2AuthenticationRequest(user, appID, context);
+            String data = initiateFido2AuthenticationRequest(user, appID, context, isAPIBased);
             context.setProperty(FIDOAuthenticatorConstants.AUTHENTICATOR_NAME +
                     FIDOAuthenticatorConstants.CHALLENGE_DATA_SUFFIX, data);
             if (StringUtils.isNotBlank(data)) {

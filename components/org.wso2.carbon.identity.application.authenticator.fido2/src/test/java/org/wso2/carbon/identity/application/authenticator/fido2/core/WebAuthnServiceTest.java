@@ -117,7 +117,9 @@ import static org.mockito.Matchers.anyList;
 import static org.mockito.Matchers.anyLong;
 import static org.mockito.Matchers.anySet;
 import static org.mockito.Matchers.anyString;
+import static org.mockito.Matchers.eq;
 import static org.mockito.MockitoAnnotations.initMocks;
+import org.mockito.ArgumentCaptor;
 import static org.powermock.api.mockito.PowerMockito.mock;
 import static org.powermock.api.mockito.PowerMockito.mockStatic;
 import static org.powermock.api.mockito.PowerMockito.when;
@@ -650,6 +652,100 @@ public class WebAuthnServiceTest {
         } catch (FIDO2AuthenticatorClientException e) {
             Assert.assertFalse(validationSuccess, "Trusted origin validation should pass.");
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // startAuthenticationWithRpId / startUsernamelessAuthenticationWithRpId
+    // -----------------------------------------------------------------------
+
+    @Test(description = "startAuthenticationWithRpId: challenge generated with explicit rpId", priority = 14)
+    public void testStartAuthenticationWithRpId() throws AuthenticationFailedException, JsonProcessingException {
+
+        mockStatic(StartAssertionOptions.class);
+        StartAssertionOptions.StartAssertionOptionsBuilder startAssertionOptionsBuilder =
+                mock(StartAssertionOptions.StartAssertionOptionsBuilder.class);
+        when(StartAssertionOptions.builder()).thenReturn(startAssertionOptionsBuilder);
+        when(startAssertionOptionsBuilder.username(anyString())).thenReturn(startAssertionOptionsBuilder);
+        when(relyingParty.startAssertion(any(StartAssertionOptions.class))).thenReturn(assertionRequest);
+        when(FIDOUtil.writeJson(any(AssertionRequestWrapper.class))).thenReturn("assertionRequest");
+
+        String response = webAuthnService.startAuthenticationWithRpId(
+                "abcd.example.com", "TestApp", USERNAME, TENANT_DOMAIN, USER_STORE_DOMAIN, ORIGIN);
+        Assert.assertEquals(response, "assertionRequest");
+    }
+
+    @Test(description = "startUsernamelessAuthenticationWithRpId: challenge generated with explicit rpId",
+            priority = 15)
+    public void testStartUsernamelessAuthenticationWithRpId()
+            throws AuthenticationFailedException, JsonProcessingException {
+
+        mockStatic(StartAssertionOptions.class);
+        StartAssertionOptions.StartAssertionOptionsBuilder startAssertionOptionsBuilder =
+                mock(StartAssertionOptions.StartAssertionOptionsBuilder.class);
+        when(StartAssertionOptions.builder()).thenReturn(startAssertionOptionsBuilder);
+        when(relyingParty.startAssertion(any(StartAssertionOptions.class))).thenReturn(assertionRequest);
+        when(FIDOUtil.writeJson(any(AssertionRequestWrapper.class))).thenReturn("assertionRequest");
+
+        String response = webAuthnService.startUsernamelessAuthenticationWithRpId(
+                "abcd.example.com", "TestApp", ORIGIN);
+        Assert.assertEquals(response, "assertionRequest");
+    }
+
+    @Test(description = "startAuthenticationWithRpId: rp.name is set to the provided rpName", priority = 16)
+    public void testStartAuthenticationWithRpIdUsesRpName()
+            throws AuthenticationFailedException, JsonProcessingException {
+
+        mockStatic(StartAssertionOptions.class);
+        StartAssertionOptions.StartAssertionOptionsBuilder startAssertionOptionsBuilder =
+                mock(StartAssertionOptions.StartAssertionOptionsBuilder.class);
+        when(StartAssertionOptions.builder()).thenReturn(startAssertionOptionsBuilder);
+        when(startAssertionOptionsBuilder.username(anyString())).thenReturn(startAssertionOptionsBuilder);
+        when(relyingParty.startAssertion(any(StartAssertionOptions.class))).thenReturn(assertionRequest);
+        when(FIDOUtil.writeJson(any(AssertionRequestWrapper.class))).thenReturn("assertionRequest");
+
+        // Capture the real RelyingPartyIdentity built by buildRelyingPartyWithExplicitRpId
+        ArgumentCaptor<RelyingPartyIdentity> rpIdentityCaptor =
+                ArgumentCaptor.forClass(RelyingPartyIdentity.class);
+
+        webAuthnService.startAuthenticationWithRpId(
+                "abcd.example.com", "MyApplication", USERNAME, TENANT_DOMAIN, USER_STORE_DOMAIN, ORIGIN);
+
+        org.mockito.Mockito.verify(mandatoryStages).identity(rpIdentityCaptor.capture());
+        Assert.assertEquals(rpIdentityCaptor.getValue().getName(), "MyApplication");
+    }
+
+    @Test(description = "startAuthenticationWithRpId: rp.name falls back to APPLICATION_NAME when rpName is blank",
+            priority = 17)
+    public void testStartAuthenticationWithRpIdFallsBackToApplicationName()
+            throws AuthenticationFailedException, JsonProcessingException {
+
+        mockStatic(StartAssertionOptions.class);
+        StartAssertionOptions.StartAssertionOptionsBuilder startAssertionOptionsBuilder =
+                mock(StartAssertionOptions.StartAssertionOptionsBuilder.class);
+        when(StartAssertionOptions.builder()).thenReturn(startAssertionOptionsBuilder);
+        when(startAssertionOptionsBuilder.username(anyString())).thenReturn(startAssertionOptionsBuilder);
+        when(relyingParty.startAssertion(any(StartAssertionOptions.class))).thenReturn(assertionRequest);
+        when(FIDOUtil.writeJson(any(AssertionRequestWrapper.class))).thenReturn("assertionRequest");
+
+        // Capture the real RelyingPartyIdentity to verify APPLICATION_NAME fallback when rpName is null
+        ArgumentCaptor<RelyingPartyIdentity> rpIdentityCaptor =
+                ArgumentCaptor.forClass(RelyingPartyIdentity.class);
+
+        webAuthnService.startAuthenticationWithRpId(
+                "abcd.example.com", null, USERNAME, TENANT_DOMAIN, USER_STORE_DOMAIN, ORIGIN);
+
+        org.mockito.Mockito.verify(mandatoryStages).identity(rpIdentityCaptor.capture());
+        Assert.assertEquals(rpIdentityCaptor.getValue().getName(),
+                org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants
+                        .APPLICATION_NAME);
+    }
+
+    @Test(description = "getTrustedOrigins: returns combined DB and config-file trusted origins", priority = 18)
+    public void testGetTrustedOrigins() throws Exception {
+
+        List<String> trustedOrigins = webAuthnService.getTrustedOrigins();
+        Assert.assertNotNull(trustedOrigins);
+        Assert.assertTrue(trustedOrigins.contains(ORIGIN));
     }
 
     @ObjectFactory
