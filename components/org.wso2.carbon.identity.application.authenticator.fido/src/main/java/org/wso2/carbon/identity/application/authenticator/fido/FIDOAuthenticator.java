@@ -689,7 +689,7 @@ public class FIDOAuthenticator extends AbstractApplicationAuthenticator
 
         boolean isAPIBased = isAPIBasedAuthRequest(request);
         try {
-            String redirectUrl = getRedirectUrl(user, appID, getLoginPage(), context, isAPIBased);
+            String redirectUrl = getRedirectUrl(response, user, appID, getLoginPage(), context, isAPIBased);
             response.sendRedirect(redirectUrl);
             if (LoggerUtils.isDiagnosticLogsEnabled()) {
                 DiagnosticLog.DiagnosticLogBuilder diagnosticLogBuilder = new DiagnosticLog.DiagnosticLogBuilder(
@@ -970,7 +970,7 @@ public class FIDOAuthenticator extends AbstractApplicationAuthenticator
         return webAuthnEnabled;
     }
 
-    private String getRedirectUrl(AuthenticatedUser user, String appID, String loginPage,
+    private String getRedirectUrl(HttpServletResponse response, AuthenticatedUser user, String appID, String loginPage,
                                   AuthenticationContext context, boolean isAPIBased)
             throws AuthenticationFailedException, UnsupportedEncodingException, URLBuilderException,
             URISyntaxException {

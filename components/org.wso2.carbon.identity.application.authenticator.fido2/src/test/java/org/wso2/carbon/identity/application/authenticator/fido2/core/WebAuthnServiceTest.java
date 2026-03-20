@@ -656,10 +656,6 @@ public class WebAuthnServiceTest {
         }
     }
 
-    // -----------------------------------------------------------------------
-    // startAuthenticationWithRpId / startUsernamelessAuthenticationWithRpId
-    // -----------------------------------------------------------------------
-
     @Test(description = "startAuthenticationWithRpId: challenge generated with explicit rpId", priority = 14)
     public void testStartAuthenticationWithRpId() throws AuthenticationFailedException, JsonProcessingException {
 
