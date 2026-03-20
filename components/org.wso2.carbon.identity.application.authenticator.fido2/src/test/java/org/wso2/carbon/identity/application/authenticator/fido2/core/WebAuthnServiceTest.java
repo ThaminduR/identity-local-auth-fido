@@ -49,6 +49,7 @@ import com.yubico.webauthn.data.UserIdentity;
 import com.yubico.webauthn.data.exception.Base64UrlException;
 import com.yubico.webauthn.exception.AssertionFailedException;
 import org.mockito.Mock;
+import org.powermock.core.classloader.annotations.PowerMockIgnore;
 import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.testng.PowerMockObjectFactory;
 import org.powermock.reflect.internal.WhiteboxImpl;
@@ -133,6 +134,7 @@ import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO
 import static org.wso2.carbon.utils.multitenancy.MultitenantConstants.SUPER_TENANT_DOMAIN_NAME;
 import static org.wso2.carbon.utils.multitenancy.MultitenantConstants.SUPER_TENANT_ID;
 
+@PowerMockIgnore({ "javax.xml.*", "org.xml.*", "javax.management.*", "jdk.internal.reflect.*" })
 @PrepareForTest({FIDO2DeviceStoreDAO.class, IdentityUtil.class, JacksonCodecs.class, IdentityConfigParser.class,
         UserCoreUtil.class, CarbonContext.class, PrivilegedCarbonContext.class, User.class, RelyingParty.class,
         PublicKeyCredentialCreationOptions.class, StartRegistrationOptions.class, FIDO2Cache.class,
@@ -704,8 +706,7 @@ public class WebAuthnServiceTest {
         when(FIDOUtil.writeJson(any(AssertionRequestWrapper.class))).thenReturn("assertionRequest");
 
         // Capture the real RelyingPartyIdentity built by buildRelyingPartyWithExplicitRpId
-        ArgumentCaptor<RelyingPartyIdentity> rpIdentityCaptor =
-                ArgumentCaptor.forClass(RelyingPartyIdentity.class);
+        ArgumentCaptor<RelyingPartyIdentity> rpIdentityCaptor = ArgumentCaptor.forClass(RelyingPartyIdentity.class);
 
         webAuthnService.startAuthenticationWithRpId(
                 "abcd.example.com", "MyApplication", USERNAME, TENANT_DOMAIN, USER_STORE_DOMAIN, ORIGIN);

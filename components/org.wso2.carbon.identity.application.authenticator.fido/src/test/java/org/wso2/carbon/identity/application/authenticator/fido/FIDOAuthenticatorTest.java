@@ -23,6 +23,7 @@ import com.yubico.u2f.data.messages.AuthenticateResponse;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.powermock.api.mockito.PowerMockito;
+import org.powermock.core.classloader.annotations.PowerMockIgnore;
 import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.testng.PowerMockObjectFactory;
 import org.testng.Assert;
@@ -44,12 +45,9 @@ import org.wso2.carbon.identity.application.authentication.framework.model.Authe
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatorData;
 import org.wso2.carbon.identity.application.authentication.framework.util.FrameworkConstants;
 import org.wso2.carbon.identity.application.authentication.framework.util.FrameworkUtils;
-import org.wso2.carbon.identity.application.common.model.ServiceProvider;
-import org.wso2.carbon.identity.application.common.model.ServiceProviderProperty;
 import org.wso2.carbon.identity.application.authenticator.fido.u2f.U2FService;
 import org.wso2.carbon.identity.application.authenticator.fido.util.FIDOAuthenticatorConstants;
 import org.wso2.carbon.identity.application.authenticator.fido2.core.WebAuthnService;
-import org.wso2.carbon.identity.application.mgt.ApplicationManagementService;
 import org.wso2.carbon.identity.application.authenticator.fido.internal.FIDOAuthenticatorServiceDataHolder;
 import org.wso2.carbon.identity.application.authenticator.fido.util.FIDOUtil;
 import org.wso2.carbon.identity.central.log.mgt.utils.LoggerUtils;
@@ -87,10 +85,11 @@ import static org.powermock.api.mockito.PowerMockito.whenNew;
 import static org.wso2.carbon.identity.application.authenticator.fido.util.FIDOAuthenticatorConstants.AUTHENTICATOR_FIDO;
 import static org.wso2.carbon.identity.application.authenticator.fido.util.FIDOAuthenticatorConstants.AUTHENTICATOR_FRIENDLY_NAME;
 
+@PowerMockIgnore({"jdk.internal.reflect.*"})
 @PrepareForTest({FIDOAuthenticator.class, IdentityUtil.class, MultitenantUtils.class, IdentityTenantUtil.class,
         U2FService.class, AuthenticateResponse.class, ConfigurationFacade.class, FileBasedConfigurationBuilder.class,
         URLEncoder.class, ServiceURLBuilder.class, LoggerUtils.class, FIDOAuthenticatorServiceDataHolder.class,
-        FrameworkUtils.class, FIDOUtil.class, ApplicationManagementService.class})
+        FrameworkUtils.class, FIDOUtil.class})
 public class FIDOAuthenticatorTest {
 
     private static final String USER_STORE_DOMAIN = "PRIMARY";
@@ -121,8 +120,6 @@ public class FIDOAuthenticatorTest {
     private AccountLockService mockAccountLockService;
     @Mock
     private FIDOAuthenticatorServiceDataHolder mockServiceDataHolder;
-    @Mock
-    private ApplicationManagementService applicationManagementService;
 
     @BeforeMethod
     public void setUp() throws Exception {
@@ -136,10 +133,6 @@ public class FIDOAuthenticatorTest {
         mockStatic(LoggerUtils.class);
         mockStatic(FIDOAuthenticatorServiceDataHolder.class);
         mockStatic(FIDOUtil.class);
-        mockStatic(ApplicationManagementService.class);
-        when(ApplicationManagementService.getInstance()).thenReturn(applicationManagementService);
-        // Default: no SP found (tests that need an SP will override per-test)
-        when(applicationManagementService.getServiceProvider(any(), any())).thenReturn(null);
         when(LoggerUtils.isDiagnosticLogsEnabled()).thenReturn(true);
         PowerMockito.when(FIDOAuthenticatorServiceDataHolder.getInstance()).thenReturn(mockServiceDataHolder);
         when(mockServiceDataHolder.getAccountLockService()).thenReturn(mockAccountLockService);
@@ -666,10 +659,10 @@ public class FIDOAuthenticatorTest {
     }
 
     // -----------------------------------------------------------------------
-    // API-based rpId resolution tests (SP property + Origin header chain)
+    // API-based rpId resolution tests (SCRIPT_APP_ID adaptive script runtime params)
     // -----------------------------------------------------------------------
 
-    private AuthenticationContext buildContextForInitiateAuth() {
+    private AuthenticationContext buildContextForInitiateAuth() throws Exception {
 
         AuthenticationContext context = new AuthenticationContext();
         AuthenticatorConfig authenticatorConfig = new AuthenticatorConfig();
@@ -698,21 +691,21 @@ public class FIDOAuthenticatorTest {
         return context;
     }
 
-    @Test(description = "API-based flow, SP property fido2AppId set: challenge uses SP property rpId", priority = 20)
-    public void testAPIBasedAuthWithSpPropertyRpId() throws Exception {
+    @Test(description = "API-based flow, SCRIPT_APP_ID (appId) set via adaptive script: challenge uses resolved rpId",
+            priority = 20)
+    public void testAPIBasedAuthWithScriptAppId() throws Exception {
 
         when(IdentityUtil.getProperty(FIDOAuthenticatorConstants.WEBAUTHN_ENABLED)).thenReturn(String.valueOf(true));
         when(httpServletRequest.getAttribute(FrameworkConstants.IS_API_BASED_AUTH_FLOW)).thenReturn(Boolean.TRUE);
 
-        ServiceProvider mockSp = mock(ServiceProvider.class);
-        ServiceProviderProperty fido2AppIdProp = mock(ServiceProviderProperty.class);
-        when(fido2AppIdProp.getName()).thenReturn("fido2AppId");
-        when(fido2AppIdProp.getValue()).thenReturn("https://abcd.example.com");
-        when(mockSp.getSpProperties()).thenReturn(new ServiceProviderProperty[]{fido2AppIdProp});
-        when(mockSp.getApplicationName()).thenReturn("TestApp");
-        when(applicationManagementService.getServiceProvider(any(), any())).thenReturn(mockSp);
-
         AuthenticationContext context = buildContextForInitiateAuth();
+
+        // Inject the "appId" runtime param as if set from an adaptive authentication script
+        Map<String, String> scriptParams = new HashMap<>();
+        scriptParams.put(FIDOAuthenticatorConstants.SCRIPT_APP_ID, "https://abcd.example.com");
+        Map<String, Map<String, String>> authenticatorParams = new HashMap<>();
+        authenticatorParams.put(FIDOAuthenticatorConstants.AUTHENTICATOR_NAME, scriptParams);
+        context.addAuthenticatorParams(authenticatorParams);
 
         when(webAuthnService.startUsernamelessAuthenticationWithRpId(anyString(), anyString(), anyString()))
                 .thenReturn("challengeData");
@@ -725,123 +718,28 @@ public class FIDOAuthenticatorTest {
         verify(webAuthnService, never()).startUsernamelessAuthentication(anyString());
     }
 
-    @Test(description = "API-based flow, Origin header trusted: challenge uses Origin header rpId", priority = 21)
-    public void testAPIBasedAuthWithOriginHeaderRpId() throws Exception {
+    @Test(description = "API-based flow, no SCRIPT_APP_ID set: falls back to standard startUsernamelessAuthentication",
+            priority = 21)
+    public void testAPIBasedAuthWithNoScriptAppId() throws Exception {
 
         when(IdentityUtil.getProperty(FIDOAuthenticatorConstants.WEBAUTHN_ENABLED)).thenReturn(String.valueOf(true));
         when(httpServletRequest.getAttribute(FrameworkConstants.IS_API_BASED_AUTH_FLOW)).thenReturn(Boolean.TRUE);
-        when(httpServletRequest.getHeader("Origin")).thenReturn("https://abcd.example.com");
-
-        // No fido2AppId SP property — SP returns empty properties
-        ServiceProvider mockSp = mock(ServiceProvider.class);
-        when(mockSp.getSpProperties()).thenReturn(new ServiceProviderProperty[]{});
-        when(mockSp.getApplicationName()).thenReturn("TestApp");
-        when(applicationManagementService.getServiceProvider(any(), any())).thenReturn(mockSp);
 
         AuthenticationContext context = buildContextForInitiateAuth();
-
-        when(webAuthnService.getTrustedOrigins())
-                .thenReturn(Collections.singletonList("https://abcd.example.com"));
-        when(webAuthnService.startUsernamelessAuthenticationWithRpId(anyString(), anyString(), anyString()))
-                .thenReturn("challengeData");
-        whenNew(WebAuthnService.class).withNoArguments().thenReturn(webAuthnService);
-
-        fidoAuthenticator.initiateAuthenticationRequest(httpServletRequest, httpServletResponse, context);
-
-        verify(webAuthnService).startUsernamelessAuthenticationWithRpId(
-                eq("abcd.example.com"), anyString(), eq("https://abcd.example.com"));
-        verify(webAuthnService, never()).startUsernamelessAuthentication(anyString());
-    }
-
-    @Test(description = "API-based flow, SP property and matching Origin: challenge uses SP property rpId",
-            priority = 22)
-    public void testAPIBasedAuthWithSpPropertyAndMatchingOrigin() throws Exception {
-
-        when(IdentityUtil.getProperty(FIDOAuthenticatorConstants.WEBAUTHN_ENABLED)).thenReturn(String.valueOf(true));
-        when(httpServletRequest.getAttribute(FrameworkConstants.IS_API_BASED_AUTH_FLOW)).thenReturn(Boolean.TRUE);
-        when(httpServletRequest.getHeader("Origin")).thenReturn("https://abcd.example.com");
-
-        ServiceProvider mockSp = mock(ServiceProvider.class);
-        ServiceProviderProperty fido2AppIdProp = mock(ServiceProviderProperty.class);
-        when(fido2AppIdProp.getName()).thenReturn("fido2AppId");
-        when(fido2AppIdProp.getValue()).thenReturn("https://abcd.example.com");
-        when(mockSp.getSpProperties()).thenReturn(new ServiceProviderProperty[]{fido2AppIdProp});
-        when(mockSp.getApplicationName()).thenReturn("TestApp");
-        when(applicationManagementService.getServiceProvider(any(), any())).thenReturn(mockSp);
-
-        AuthenticationContext context = buildContextForInitiateAuth();
-
-        when(webAuthnService.startUsernamelessAuthenticationWithRpId(anyString(), anyString(), anyString()))
-                .thenReturn("challengeData");
-        whenNew(WebAuthnService.class).withNoArguments().thenReturn(webAuthnService);
-
-        fidoAuthenticator.initiateAuthenticationRequest(httpServletRequest, httpServletResponse, context);
-
-        // SP property wins; rpId and effectiveAppId both come from fido2AppId
-        verify(webAuthnService).startUsernamelessAuthenticationWithRpId(
-                eq("abcd.example.com"), anyString(), eq("https://abcd.example.com"));
-        verify(webAuthnService, never()).startUsernamelessAuthentication(anyString());
-    }
-
-    @Test(description = "API-based flow, SP property and mismatched Origin: SP property rpId is used (warn logged)",
-            priority = 23)
-    public void testAPIBasedAuthWithSpPropertyAndMismatchedOrigin() throws Exception {
-
-        when(IdentityUtil.getProperty(FIDOAuthenticatorConstants.WEBAUTHN_ENABLED)).thenReturn(String.valueOf(true));
-        when(httpServletRequest.getAttribute(FrameworkConstants.IS_API_BASED_AUTH_FLOW)).thenReturn(Boolean.TRUE);
-        // Origin header points to a different domain than fido2AppId
-        when(httpServletRequest.getHeader("Origin")).thenReturn("https://other.example.com");
-
-        ServiceProvider mockSp = mock(ServiceProvider.class);
-        ServiceProviderProperty fido2AppIdProp = mock(ServiceProviderProperty.class);
-        when(fido2AppIdProp.getName()).thenReturn("fido2AppId");
-        when(fido2AppIdProp.getValue()).thenReturn("https://abcd.example.com");
-        when(mockSp.getSpProperties()).thenReturn(new ServiceProviderProperty[]{fido2AppIdProp});
-        when(mockSp.getApplicationName()).thenReturn("TestApp");
-        when(applicationManagementService.getServiceProvider(any(), any())).thenReturn(mockSp);
-
-        AuthenticationContext context = buildContextForInitiateAuth();
-
-        when(webAuthnService.startUsernamelessAuthenticationWithRpId(anyString(), anyString(), anyString()))
-                .thenReturn("challengeData");
-        whenNew(WebAuthnService.class).withNoArguments().thenReturn(webAuthnService);
-
-        fidoAuthenticator.initiateAuthenticationRequest(httpServletRequest, httpServletResponse, context);
-
-        // SP property must be used regardless of the mismatched Origin header; effectiveAppId = fido2AppId URL
-        verify(webAuthnService).startUsernamelessAuthenticationWithRpId(
-                eq("abcd.example.com"), anyString(), eq("https://abcd.example.com"));
-        verify(webAuthnService, never()).startUsernamelessAuthentication(anyString());
-    }
-
-    @Test(description = "API-based flow, neither SP property nor Origin: falls back to servlet hostname (existing " +
-            "behaviour)", priority = 24)
-    public void testAPIBasedAuthWithNeitherRpIdSource() throws Exception {
-
-        when(IdentityUtil.getProperty(FIDOAuthenticatorConstants.WEBAUTHN_ENABLED)).thenReturn(String.valueOf(true));
-        when(httpServletRequest.getAttribute(FrameworkConstants.IS_API_BASED_AUTH_FLOW)).thenReturn(Boolean.TRUE);
-        // No Origin header
-        when(httpServletRequest.getHeader("Origin")).thenReturn(null);
-
-        ServiceProvider mockSp = mock(ServiceProvider.class);
-        when(mockSp.getSpProperties()).thenReturn(new ServiceProviderProperty[]{});
-        when(mockSp.getApplicationName()).thenReturn("TestApp");
-        AuthenticationContext context = buildContextForInitiateAuth();
-        context.setServiceProvider(mockSp);
+        // No scriptAppId runtime param set — no appId in adaptive script
 
         when(webAuthnService.startUsernamelessAuthentication(anyString())).thenReturn("challengeData");
         whenNew(WebAuthnService.class).withNoArguments().thenReturn(webAuthnService);
 
         fidoAuthenticator.initiateAuthenticationRequest(httpServletRequest, httpServletResponse, context);
 
-        // Falls through to existing startUsernamelessAuthentication (strategy 3 fallback)
         verify(webAuthnService).startUsernamelessAuthentication(anyString());
         verify(webAuthnService, never())
                 .startUsernamelessAuthenticationWithRpId(anyString(), anyString(), anyString());
     }
 
     @Test(description = "Browser-redirect flow: existing startUsernamelessAuthentication called, no rpId resolution",
-            priority = 25)
+            priority = 22)
     public void testBrowserRedirectFlowNoRpIdResolution() throws Exception {
 
         when(IdentityUtil.getProperty(FIDOAuthenticatorConstants.WEBAUTHN_ENABLED)).thenReturn(String.valueOf(true));
@@ -849,7 +747,6 @@ public class FIDOAuthenticatorTest {
         when(httpServletRequest.getAttribute(FrameworkConstants.IS_API_BASED_AUTH_FLOW)).thenReturn(null);
 
         AuthenticationContext context = buildContextForInitiateAuth();
-        // No ServiceProvider configured — resolution code must not even be reached for browser-redirect
 
         when(webAuthnService.startUsernamelessAuthentication(anyString())).thenReturn("challengeData");
         whenNew(WebAuthnService.class).withNoArguments().thenReturn(webAuthnService);

@@ -77,8 +77,10 @@ import org.wso2.carbon.utils.multitenancy.MultitenantUtils;
 
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -863,9 +865,9 @@ public class FIDOAuthenticator extends AbstractApplicationAuthenticator
             String scriptAppId = params.get(FIDOAuthenticatorConstants.SCRIPT_APP_ID);
             if (StringUtils.isNotBlank(scriptAppId)) {
                 try {
-                    resolvedRpId = new URI(scriptAppId).getHost();
+                    resolvedRpId = new URL(scriptAppId).getHost();
                     resolvedAppId = scriptAppId;
-                } catch (URISyntaxException e) {
+                } catch (MalformedURLException e) {
                     if (log.isDebugEnabled()) {
                         log.debug("Malformed AppID value '" + scriptAppId +
                                 "' set via adaptive script parameters.", e);

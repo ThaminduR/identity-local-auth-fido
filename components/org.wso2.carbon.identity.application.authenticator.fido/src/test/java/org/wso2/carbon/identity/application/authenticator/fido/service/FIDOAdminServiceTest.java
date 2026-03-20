@@ -21,6 +21,7 @@ package org.wso2.carbon.identity.application.authenticator.fido.service;
 import com.yubico.u2f.data.messages.RegisterRequestData;
 import com.yubico.u2f.data.messages.RegisterResponse;
 import org.mockito.Mock;
+import org.powermock.core.classloader.annotations.PowerMockIgnore;
 import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.testng.PowerMockObjectFactory;
 import org.testng.Assert;
@@ -49,6 +50,7 @@ import static org.powermock.api.mockito.PowerMockito.mockStatic;
 import static org.powermock.api.mockito.PowerMockito.when;
 import static org.wso2.carbon.utils.multitenancy.MultitenantConstants.SUPER_TENANT_ID;
 
+@PowerMockIgnore({"jdk.internal.reflect.*"})
 @PrepareForTest({U2FService.class, CarbonContext.class, PrivilegedCarbonContext.class, FIDOUtil.class,
         RegisterResponse.class})
 public class FIDOAdminServiceTest {

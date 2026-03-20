@@ -125,7 +125,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static com.yubico.webauthn.data.UserVerificationRequirement.PREFERRED;
 import static org.wso2.carbon.identity.application.authenticator.fido2.util.FIDO2AuthenticatorConstants.APPLICATION_NAME;
@@ -1433,7 +1432,7 @@ public class WebAuthnService {
          * string.
          */
         List<String> updatedOrigins = origins.stream()
-                .flatMap(url -> Stream.of(removeDefaultPort(url), appendDefaultPortIfAbsent(url))).distinct()
+                .flatMap(url -> Arrays.stream(new String[]{removeDefaultPort(url), appendDefaultPortIfAbsent(url)})).distinct()
                 .collect(Collectors.toList());
 
         origins.clear();
