@@ -689,7 +689,7 @@ public class WebAuthnService {
             user.setUserName(username);
             user.setTenantDomain(tenantDomain);
             user.setUserStoreDomain(storeDomain);
-            return doStartAuthentication(buildRelyingPartyWithExplicitRpId(rpId, rpName, originUrl), originUrl, user, rpId);
+            return doStartAuthentication(buildRelyingPartyWithExplicitRpId(rpId, rpName), originUrl, user, rpId);
         } catch (MalformedURLException | JsonProcessingException | FIDO2AuthenticatorServerException e) {
             throw new AuthenticationFailedException(e.getMessage());
         }
@@ -765,8 +765,7 @@ public class WebAuthnService {
                 log.debug("Starting usernameless authentication with explicit rpId '" + rpId
                         + "' for application: " + rpName);
             }
-            return doStartUsernamelessAuthentication(buildRelyingPartyWithExplicitRpId(rpId, rpName, originUrl),
-                    originUrl, rpId);
+            return doStartUsernamelessAuthentication(buildRelyingPartyWithExplicitRpId(rpId, rpName), originUrl, rpId);
         } catch (MalformedURLException | JsonProcessingException | FIDO2AuthenticatorServerException e) {
             throw new AuthenticationFailedException("Usernameless authentication initialization failed for the " +
                     "application with app id: " + appId, e);
@@ -903,8 +902,7 @@ public class WebAuthnService {
             // RelyingParty matches the credential's rpIdHash.  Otherwise fall back to the legacy
             // derivation from the cached origin URL (browser-redirect flows).
             if (cacheEntry.getExplicitRpId() != null) {
-                relyingParty = buildRelyingPartyWithExplicitRpId(
-                        cacheEntry.getExplicitRpId(), APPLICATION_NAME, cacheEntry.getOrigin());
+                relyingParty = buildRelyingPartyWithExplicitRpId(cacheEntry.getExplicitRpId(), APPLICATION_NAME);
             } else {
                 relyingParty = buildRelyingParty(cacheEntry.getOrigin());
             }
@@ -1187,7 +1185,7 @@ public class WebAuthnService {
             rpId = originUrl.getHost();
         }
 
-        return buildRelyingPartyWithExplicitRpId(rpId, APPLICATION_NAME, originUrl);
+        return buildRelyingPartyWithExplicitRpId(rpId, APPLICATION_NAME);
     }
 
     /**
@@ -1195,13 +1193,12 @@ public class WebAuthnService {
      * Used in API-based authentication flows where the rpId is resolved from operator configuration or the
      * request Origin header rather than from the IS servlet hostname.
      *
-     * @param rpId      The relying party identifier (hostname) to use directly.
-     * @param rpName    The relying party display name. Falls back to APPLICATION_NAME if blank.
-     * @param originUrl The origin URL used to populate the trusted origins set.
+     * @param rpId   The relying party identifier (hostname) to use directly.
+     * @param rpName The relying party display name. Falls back to APPLICATION_NAME if blank.
      * @return A configured RelyingParty instance.
      * @throws FIDO2AuthenticatorServerException if trusted origins cannot be read.
      */
-    private RelyingParty buildRelyingPartyWithExplicitRpId(String rpId, String rpName, URL originUrl)
+    private RelyingParty buildRelyingPartyWithExplicitRpId(String rpId, String rpName)
             throws FIDO2AuthenticatorServerException {
 
         readTrustedOrigins();
