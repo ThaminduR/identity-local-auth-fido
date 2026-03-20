@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2025, WSO2 LLC. (http://www.wso2.com).
+ * Copyright (c) 2022-2026, WSO2 LLC. (http://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -655,6 +655,183 @@ public class FIDOAuthenticatorTest {
             Assert.fail("Expected AuthenticationFailedException was not thrown");
         } catch (AuthenticationFailedException e) {
             Assert.assertTrue(e.getMessage().contains("Error occurred while checking account lock status for user"));
+        }
+    }
+
+    @Test(description = "Test case for initiateAuthenticationRequest() when API-based with valid rpId from " +
+            "adaptive script param for an identified user with passkeys", priority = 16)
+    public void testInitiateAuthenticationRequestApiBasedWithRpId() throws Exception {
+
+        AuthenticationContext context = new AuthenticationContext();
+        AuthenticatorConfig authenticatorConfig = new AuthenticatorConfig();
+        authenticatorConfig.setApplicationAuthenticator(fidoAuthenticator);
+        List<AuthenticatorConfig> authenticatorList = new ArrayList<>();
+        authenticatorList.add(authenticatorConfig);
+
+        AuthenticatedUser authenticatedUser = AuthenticatedUser
+                .createLocalAuthenticatedUserFromSubjectIdentifier(USERNAME);
+        authenticatedUser.setFederatedUser(false);
+        authenticatedUser.setUserName(USERNAME);
+        authenticatedUser.setTenantDomain(SUPER_TENANT_DOMAIN);
+        authenticatedUser.setUserStoreDomain(USER_STORE_DOMAIN);
+
+        StepConfig stepConfig = new StepConfig();
+        stepConfig.setAuthenticatorList(authenticatorList);
+        stepConfig.setAuthenticatedUser(authenticatedUser);
+        stepConfig.setSubjectAttributeStep(true);
+        Map<Integer, StepConfig> stepMap = new HashMap<>();
+        stepMap.put(1, stepConfig);
+        SequenceConfig sequenceConfig = new SequenceConfig();
+        sequenceConfig.setStepMap(stepMap);
+        context.setSequenceConfig(sequenceConfig);
+        context.setSubject(authenticatedUser);
+        context.setServiceProviderName("TestSP");
+        context.setContextIdentifier(UUID.randomUUID().toString());
+
+        when(IdentityUtil.getPrimaryDomainName()).thenReturn(USER_STORE_DOMAIN);
+        when(IdentityUtil.getProperty(FIDOAuthenticatorConstants.WEBAUTHN_ENABLED)).thenReturn(String.valueOf(true));
+        when(httpServletRequest.getAttribute(FrameworkConstants.IS_API_BASED_AUTH_FLOW)).thenReturn(Boolean.TRUE);
+
+        // Inject scriptAppId into context runtime params (read by AbstractApplicationAuthenticator.getRuntimeParams).
+        Map<String, String> scriptParams = new HashMap<>();
+        scriptParams.put(FIDOAuthenticatorConstants.SCRIPT_APP_ID, "https://abcd.example.com:9443");
+        Map<String, Map<String, String>> contextParamMap = new HashMap<>();
+        contextParamMap.put(FIDOAuthenticatorConstants.AUTHENTICATOR_NAME, scriptParams);
+        context.addAuthenticatorParams(contextParamMap);
+
+        whenNew(WebAuthnService.class).withNoArguments().thenReturn(webAuthnService);
+        when(webAuthnService.isFidoKeyRegistered(any(AuthenticatedUser.class))).thenReturn(true);
+        when(webAuthnService.startAuthenticationWithRpId(anyString(), anyString(), anyString(),
+                anyString(), anyString(), anyString())).thenReturn("rpIdAssertionRequest");
+
+        Map<String, String> parameterMap = new HashMap<>();
+        parameterMap.put(FIDOAuthenticatorConstants.APP_ID, "https://localhost:9443");
+        parameterMap.put(FIDOAuthenticatorConstants.FIDO2_AUTH, "fido2-auth");
+        authenticatorConfig.setParameterMap(parameterMap);
+
+        mockStatic(FileBasedConfigurationBuilder.class);
+        when(FileBasedConfigurationBuilder.getInstance()).thenReturn(fileBasedConfigurationBuilder);
+        when(fileBasedConfigurationBuilder.getAuthenticatorBean(anyString())).thenReturn(authenticatorConfig);
+
+        mockStatic(URLEncoder.class);
+        when(URLEncoder.encode(anyString(), anyString())).thenReturn("encodedUrl");
+        mockServiceURLBuilder();
+
+        fidoAuthenticator.initiateAuthenticationRequest(httpServletRequest, httpServletResponse, context);
+
+        verify(webAuthnService).startAuthenticationWithRpId(eq("abcd.example.com"), eq("TestSP"),
+                eq(USERNAME), anyString(), anyString(), anyString());
+        verify(webAuthnService, never()).startAuthentication(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test(description = "Test case for initiateAuthenticationRequest() when API-based with valid rpId from " +
+            "adaptive script param and no identified user (usernameless flow)", priority = 17)
+    public void testInitiateAuthenticationRequestApiBasedWithRpIdUsernameless() throws Exception {
+
+        AuthenticationContext context = new AuthenticationContext();
+        AuthenticatorConfig authenticatorConfig = new AuthenticatorConfig();
+        List<AuthenticatorConfig> authenticatorList = new ArrayList<>();
+        authenticatorList.add(authenticatorConfig);
+
+        // No authenticated user on step → getAuthenticatedUser() returns null → usernameless path.
+        StepConfig stepConfig = new StepConfig();
+        stepConfig.setAuthenticatorList(authenticatorList);
+        Map<Integer, StepConfig> stepMap = new HashMap<>();
+        stepMap.put(1, stepConfig);
+        SequenceConfig sequenceConfig = new SequenceConfig();
+        sequenceConfig.setStepMap(stepMap);
+        context.setSequenceConfig(sequenceConfig);
+        context.setServiceProviderName("TestSP");
+        context.setContextIdentifier(UUID.randomUUID().toString());
+
+        when(IdentityUtil.getPrimaryDomainName()).thenReturn(USER_STORE_DOMAIN);
+        when(IdentityUtil.getProperty(FIDOAuthenticatorConstants.WEBAUTHN_ENABLED)).thenReturn(String.valueOf(true));
+        when(httpServletRequest.getAttribute(FrameworkConstants.IS_API_BASED_AUTH_FLOW)).thenReturn(Boolean.TRUE);
+
+        Map<String, String> scriptParams = new HashMap<>();
+        scriptParams.put(FIDOAuthenticatorConstants.SCRIPT_APP_ID, "https://abcd.example.com:9443");
+        Map<String, Map<String, String>> contextParamMap = new HashMap<>();
+        contextParamMap.put(FIDOAuthenticatorConstants.AUTHENTICATOR_NAME, scriptParams);
+        context.addAuthenticatorParams(contextParamMap);
+
+        whenNew(WebAuthnService.class).withNoArguments().thenReturn(webAuthnService);
+        when(webAuthnService.startUsernamelessAuthenticationWithRpId(anyString(), anyString(), anyString()))
+                .thenReturn("rpIdUsernamelessAssertionRequest");
+
+        Map<String, String> parameterMap = new HashMap<>();
+        parameterMap.put(FIDOAuthenticatorConstants.APP_ID, "https://localhost:9443");
+        parameterMap.put(FIDOAuthenticatorConstants.FIDO2_AUTH, "fido2-auth");
+        authenticatorConfig.setParameterMap(parameterMap);
+
+        mockStatic(FileBasedConfigurationBuilder.class);
+        when(FileBasedConfigurationBuilder.getInstance()).thenReturn(fileBasedConfigurationBuilder);
+        when(fileBasedConfigurationBuilder.getAuthenticatorBean(anyString())).thenReturn(authenticatorConfig);
+
+        mockStatic(URLEncoder.class);
+        when(URLEncoder.encode(anyString(), anyString())).thenReturn("encodedUrl");
+        mockServiceURLBuilder();
+
+        fidoAuthenticator.initiateAuthenticationRequest(httpServletRequest, httpServletResponse, context);
+
+        verify(webAuthnService).startUsernamelessAuthenticationWithRpId(
+                eq("abcd.example.com"), eq("TestSP"), eq("https://abcd.example.com:9443"));
+        verify(webAuthnService, never()).startUsernamelessAuthentication(anyString());
+    }
+
+    @Test(description = "Test case for initiateAuthenticationRequest() when API-based with malformed rpId from " +
+            "adaptive script param", priority = 18)
+    public void testInitiateAuthenticationRequestApiBasedWithMalformedScriptAppId() throws Exception {
+
+        AuthenticationContext context = new AuthenticationContext();
+        AuthenticatorConfig authenticatorConfig = new AuthenticatorConfig();
+        authenticatorConfig.setApplicationAuthenticator(fidoAuthenticator);
+        List<AuthenticatorConfig> authenticatorList = new ArrayList<>();
+        authenticatorList.add(authenticatorConfig);
+
+        AuthenticatedUser authenticatedUser = AuthenticatedUser
+                .createLocalAuthenticatedUserFromSubjectIdentifier(USERNAME);
+        authenticatedUser.setFederatedUser(false);
+        authenticatedUser.setUserName(USERNAME);
+        authenticatedUser.setTenantDomain(SUPER_TENANT_DOMAIN);
+        authenticatedUser.setUserStoreDomain(USER_STORE_DOMAIN);
+
+        StepConfig stepConfig = new StepConfig();
+        stepConfig.setAuthenticatorList(authenticatorList);
+        stepConfig.setAuthenticatedUser(authenticatedUser);
+        stepConfig.setSubjectAttributeStep(true);
+        Map<Integer, StepConfig> stepMap = new HashMap<>();
+        stepMap.put(1, stepConfig);
+        SequenceConfig sequenceConfig = new SequenceConfig();
+        sequenceConfig.setStepMap(stepMap);
+        context.setSequenceConfig(sequenceConfig);
+        context.setSubject(authenticatedUser);
+        context.setContextIdentifier(UUID.randomUUID().toString());
+
+        when(IdentityUtil.getProperty(FIDOAuthenticatorConstants.WEBAUTHN_ENABLED)).thenReturn(String.valueOf(true));
+        when(httpServletRequest.getAttribute(FrameworkConstants.IS_API_BASED_AUTH_FLOW)).thenReturn(Boolean.TRUE);
+
+        Map<String, String> scriptParams = new HashMap<>();
+        scriptParams.put(FIDOAuthenticatorConstants.SCRIPT_APP_ID, "not-a-valid-url");
+        Map<String, Map<String, String>> contextParamMap = new HashMap<>();
+        contextParamMap.put(FIDOAuthenticatorConstants.AUTHENTICATOR_NAME, scriptParams);
+        context.addAuthenticatorParams(contextParamMap);
+
+        whenNew(WebAuthnService.class).withNoArguments().thenReturn(webAuthnService);
+
+        Map<String, String> parameterMap = new HashMap<>();
+        parameterMap.put(FIDOAuthenticatorConstants.APP_ID, "https://localhost:9443");
+        parameterMap.put(FIDOAuthenticatorConstants.FIDO2_AUTH, "fido2-auth");
+        authenticatorConfig.setParameterMap(parameterMap);
+
+        mockStatic(FileBasedConfigurationBuilder.class);
+        when(FileBasedConfigurationBuilder.getInstance()).thenReturn(fileBasedConfigurationBuilder);
+        when(fileBasedConfigurationBuilder.getAuthenticatorBean(anyString())).thenReturn(authenticatorConfig);
+
+        try {
+            fidoAuthenticator.initiateAuthenticationRequest(httpServletRequest, httpServletResponse, context);
+            Assert.fail("Expected AuthenticationFailedException was not thrown");
+        } catch (AuthenticationFailedException e) {
+            Assert.assertTrue(e.getMessage().contains("Malformed AppID value set via adaptive script parameters"));
         }
     }
 

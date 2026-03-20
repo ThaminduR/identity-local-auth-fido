@@ -526,6 +526,9 @@ public class FIDOAuthenticator extends AbstractApplicationAuthenticator
         }
         String tokenResponse = request.getParameter(TOKEN_RESPONSE);
 
+        if (isAPIBasedAuthRequest(request)) {
+            tokenResponse = base64URLDecode(request.getParameter(TOKEN_RESPONSE));
+        }
         if (tokenResponse != null && !tokenResponse.contains(ERROR_CODE)) {
             if (isWebAuthnEnabled()) {
                 if (user == null) {
