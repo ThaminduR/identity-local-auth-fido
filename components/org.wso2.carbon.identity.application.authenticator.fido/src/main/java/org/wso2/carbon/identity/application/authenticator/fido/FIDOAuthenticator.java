@@ -865,7 +865,7 @@ public class FIDOAuthenticator extends AbstractApplicationAuthenticator
             }
             // AppID set via adaptive script authenticator params.
             Map<String, String> params = getRuntimeParams(context);
-            String scriptAppId = params.get(FIDOAuthenticatorConstants.SCRIPT_APP_ID);
+            String scriptAppId = params != null ? params.get(FIDOAuthenticatorConstants.SCRIPT_APP_ID) : null;
             if (StringUtils.isNotBlank(scriptAppId)) {
                 try {
                     resolvedRpId = new URL(scriptAppId).getHost();

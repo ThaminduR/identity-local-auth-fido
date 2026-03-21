@@ -55,14 +55,12 @@ import org.wso2.carbon.identity.core.ServiceURL;
 import org.wso2.carbon.identity.core.ServiceURLBuilder;
 import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
 import org.wso2.carbon.identity.core.util.IdentityUtil;
-import org.wso2.carbon.identity.handler.event.account.lock.exception.AccountLockServiceException;
 import org.wso2.carbon.identity.handler.event.account.lock.service.AccountLockService;
 import org.wso2.carbon.utils.multitenancy.MultitenantUtils;
 
 import java.net.URLEncoder;
 import java.util.Arrays;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -135,7 +133,7 @@ public class FIDOAuthenticatorTest {
         mockStatic(FIDOUtil.class);
         when(LoggerUtils.isDiagnosticLogsEnabled()).thenReturn(true);
         PowerMockito.when(FIDOAuthenticatorServiceDataHolder.getInstance()).thenReturn(mockServiceDataHolder);
-        when(mockServiceDataHolder.getAccountLockService()).thenReturn(mockAccountLockService);
+        when(FIDOAuthenticatorServiceDataHolder.getAccountLockService()).thenReturn(mockAccountLockService);
         // Default behavior: account is not locked
         PowerMockito.when(FIDOUtil.isAccountLocked(any(AuthenticatedUser.class))).thenReturn(false);
         // Return mock origin value instead of calling real method
