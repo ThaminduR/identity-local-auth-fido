@@ -309,6 +309,9 @@ public class WebAuthnServiceTest {
                 .thenReturn(Optional.of(fido2CredentialRegistration));
 
         mockStatic(FIDOUtil.class);
+        com.fasterxml.jackson.databind.JsonNode mockRootNode = mock(com.fasterxml.jackson.databind.JsonNode.class);
+        when(mockRootNode.isObject()).thenReturn(false);
+        when(objectMapperMock.readTree(anyString())).thenReturn(mockRootNode);
     }
 
     @Test(description = "Test case for startFIDO2Registration() method", priority = 1)

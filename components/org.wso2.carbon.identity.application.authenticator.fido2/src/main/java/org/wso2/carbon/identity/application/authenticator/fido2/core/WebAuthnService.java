@@ -21,7 +21,9 @@ package org.wso2.carbon.identity.application.authenticator.fido2.core;
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.net.InternetDomainName;
 import com.webauthn4j.WebAuthnManager;
 import com.webauthn4j.converter.exception.DataConversionException;
@@ -829,14 +831,21 @@ public class WebAuthnService {
         }
 
         try {
-            response = jsonMapper.readValue(responseJson, AssertionResponse.class);
+            response = jsonMapper.readValue(injectClientExtensionResults(responseJson), AssertionResponse.class);
             String requestId = response.getRequestId().getBase64();
             FIDO2CacheEntry cacheEntry = FIDO2Cache.getInstance()
                     .getValueFromCacheByRequestId(new FIDO2CacheKey(requestId));
 
             if (cacheEntry != null) {
                 request = jsonMapper.readValue(cacheEntry.getAssertionRequest(), AssertionRequest.class);
-                relyingParty = buildRelyingParty(cacheEntry.getOrigin());
+                // If an explicit rpId was stored at start time (API-based flow), use it directly so the
+                // RelyingParty matches the credential's rpIdHash.  Otherwise fall back to the legacy
+                // derivation from the cached origin URL (browser-redirect flows).
+                if (cacheEntry.getExplicitRpId() != null) {
+                    relyingParty = buildRelyingPartyWithExplicitRpId(cacheEntry.getExplicitRpId(), APPLICATION_NAME);
+                } else {
+                    relyingParty = buildRelyingParty(cacheEntry.getOrigin());
+                }
                 FIDO2Cache.getInstance().clearCacheEntryByRequestId(new FIDO2CacheKey(requestId));
             }
         } catch (IOException e) {
@@ -1501,6 +1510,36 @@ public class WebAuthnService {
         return credential;
     }
 
+    /**
+     * Ensures the assertion response JSON contains a {@code clientExtensionResults} object inside the
+     * {@code credential} node.  The browser's WebAuthn API omits this field when no extensions are
+     * requested, but Yubico's {@link PublicKeyCredential} marks it {@code @NonNull}.  Without this
+     * pre-processing Jackson would throw a {@code NullPointerException} (wrapped as
+     * {@code JsonMappingException}) when deserialising the credential, which surfaces as
+     * "Failed to decode response object."
+     *
+     * @param responseJson The raw assertion response JSON string.
+     * @return The (possibly modified) JSON string that always has {@code clientExtensionResults: {}}.
+     */
+    private String injectClientExtensionResults(String responseJson) {
+
+        try {
+            JsonNode root = jsonMapper.readTree(responseJson);
+            if (root.isObject() && root.has("credential")) {
+                JsonNode credentialNode = root.get("credential");
+                if (credentialNode.isObject() && !credentialNode.has("clientExtensionResults")) {
+                    ((ObjectNode) credentialNode).set("clientExtensionResults", jsonMapper.createObjectNode());
+                    return jsonMapper.writeValueAsString(root);
+                }
+            }
+        } catch (IOException e) {
+            if (log.isDebugEnabled()) {
+                log.debug("Could not pre-process assertion response JSON to inject clientExtensionResults.", e);
+            }
+        }
+        return responseJson;
+    }
+
     private AssertionResponse getAssertionResponse(String responseJson) throws AuthenticationFailedException {
 
         final AssertionResponse response;
@@ -1515,7 +1554,7 @@ public class WebAuthnService {
         }
 
         try {
-            response = jsonMapper.readValue(responseJson, AssertionResponse.class);
+            response = jsonMapper.readValue(injectClientExtensionResults(responseJson), AssertionResponse.class);
         } catch (IOException e) {
             throw new AuthenticationFailedException("Assertion for finish authentication flow failed due to failure " +
                     "in decoding json response: " + responseJson, e);
