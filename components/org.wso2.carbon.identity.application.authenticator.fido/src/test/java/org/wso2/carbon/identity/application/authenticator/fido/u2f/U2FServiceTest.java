@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, WSO2 Inc. (http://www.wso2.com).
+ * Copyright (c) 2022-2026, WSO2 Inc. (http://www.wso2.com).
  *
  * WSO2 Inc. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -29,6 +29,7 @@ import com.yubico.u2f.data.messages.RegisterResponse;
 import com.yubico.u2f.exceptions.DeviceCompromisedException;
 import com.yubico.u2f.exceptions.NoEligableDevicesException;
 import org.mockito.Mock;
+import org.powermock.core.classloader.annotations.PowerMockIgnore;
 import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.testng.PowerMockObjectFactory;
 import org.testng.Assert;
@@ -43,7 +44,6 @@ import org.wso2.carbon.identity.application.authenticator.fido.dto.FIDOUser;
 import org.wso2.carbon.identity.application.authenticator.fido.exception.FIDOAuthenticatorServerException;
 
 import java.lang.reflect.Field;
-import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -59,8 +59,9 @@ import static org.powermock.api.mockito.PowerMockito.mock;
 import static org.powermock.api.mockito.PowerMockito.mockStatic;
 import static org.powermock.api.mockito.PowerMockito.when;
 
+@PowerMockIgnore({"jdk.internal.reflect.*"})
 @PrepareForTest({U2FService.class, DeviceStoreDAO.class, DeviceRegistration.class, AuthenticateRequestData.class,
-        RegisterRequestData.class, Timestamp.class})
+        RegisterRequestData.class})
 public class U2FServiceTest {
 
     private final String APP_ID = "https://localhost:9443";
@@ -87,7 +88,6 @@ public class U2FServiceTest {
         mockStatic(DeviceRegistration.class);
         mockStatic(AuthenticateRequestData.class);
         mockStatic(RegisterRequestData.class);
-        mockStatic(Timestamp.class);
     }
 
     @AfterMethod
@@ -241,8 +241,7 @@ public class U2FServiceTest {
 
         FIDOUser fidoUser = new FIDOUser(USERNAME, SUPER_TENANT_DOMAIN_NAME, USER_STORE_DOMAIN, APP_ID);
         when(DeviceStoreDAO.getInstance()).thenReturn(deviceStoreDAO);
-        when(Timestamp.valueOf(anyString())).thenReturn(new Timestamp(new Date().getTime()));
-        u2FService.removeRegistration(fidoUser, "deviceRemarks");
+        u2FService.removeRegistration(fidoUser, "2020-01-01 00:00:00");
     }
 
     @ObjectFactory
