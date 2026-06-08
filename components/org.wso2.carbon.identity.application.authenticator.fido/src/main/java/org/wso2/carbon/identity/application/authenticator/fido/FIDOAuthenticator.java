@@ -68,6 +68,7 @@ import org.wso2.carbon.identity.core.util.IdentityUtil;
 import org.wso2.carbon.identity.multi.attribute.login.mgt.ResolvedUserResult;
 import org.wso2.carbon.idp.mgt.IdentityProviderManagementException;
 import org.wso2.carbon.user.api.UserRealm;
+import org.wso2.carbon.user.core.UserCoreConstants;
 import org.wso2.carbon.user.core.UserStoreManager;
 import org.wso2.carbon.user.core.common.AbstractUserStoreManager;
 import org.wso2.carbon.user.core.service.RealmService;
@@ -1415,6 +1416,21 @@ public class FIDOAuthenticator extends AbstractApplicationAuthenticator
                     secondary = secondary.getSecondaryUserStoreManager();
                 }
             }
+
+            // Resolve the username to its canonical stored case when the user store is
+            // case-insensitive, so a request username differing only in case (e.g. the
+            // `username` authorize param that bypasses Identifier First) still matches the
+            // stored passkey. Gated, default-off: FIDO.EnablePasskeyUsernameCaseNormalization.
+            if (isPasskeyUsernameCaseNormalizationEnabled()) {
+                String caseDomain = StringUtils.isNotBlank(userStoreDomain)
+                        ? userStoreDomain : UserCoreConstants.PRIMARY_DEFAULT_DOMAIN_NAME;
+                if (!IdentityUtil.isUserStoreCaseSensitive(caseDomain, tenantId)) {
+                    String canonical = resolveCanonicalUsername(userStoreManager, username, userStoreDomain);
+                    if (StringUtils.isNotBlank(canonical)) {
+                        username = canonical;
+                    }
+                }
+            }
         } catch (org.wso2.carbon.user.api.UserStoreException e) {
             if (log.isDebugEnabled()) {
                 log.debug("FIDO Authenticator failed while trying to authenticate.", e);
@@ -1428,6 +1444,30 @@ public class FIDOAuthenticator extends AbstractApplicationAuthenticator
         }
 
         return authenticatedUser;
+    }
+
+    private boolean isPasskeyUsernameCaseNormalizationEnabled() {
+        return Boolean.parseBoolean(IdentityUtil.getProperty(
+                FIDOAuthenticatorConstants.ConnectorConfig.ENABLE_PASSKEY_USERNAME_CASE_NORMALIZATION));
+    }
+
+    private String resolveCanonicalUsername(AbstractUserStoreManager userStoreManager,
+                                            String username, String userStoreDomain) {
+        try {
+            String domainQualified = StringUtils.isNotBlank(userStoreDomain)
+                    ? UserCoreUtil.addDomainToName(FIDOUtil.getUsernameWithoutDomain(username), userStoreDomain)
+                    : username;
+            String userId = userStoreManager.getUserIDFromUserName(domainQualified);
+            if (StringUtils.isBlank(userId)) {
+                return null;
+            }
+            return userStoreManager.getUserNameFromUserID(userId);
+        } catch (org.wso2.carbon.user.core.UserStoreException e) {
+            if (log.isDebugEnabled()) {
+                log.debug("Could not resolve canonical username for: " + username, e);
+            }
+            return null;
+        }
     }
 
     /**

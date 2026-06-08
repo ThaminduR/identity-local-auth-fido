@@ -118,6 +118,8 @@ public class FIDOAuthenticatorConstants {
 
         public static final String ENABLE_PASSKEY_PROGRESSIVE_ENROLLMENT = "FIDO.EnablePasskeyProgressiveEnrollment";
         public static final String ENABLE_USERNAMELESS_AUTHENTICATION = "FIDO.EnableUsernamelessAuthentication";
+        public static final String ENABLE_PASSKEY_USERNAME_CASE_NORMALIZATION =
+                "FIDO.EnablePasskeyUsernameCaseNormalization";
     }
 
     /**
